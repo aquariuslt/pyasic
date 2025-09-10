@@ -240,7 +240,6 @@ class BTMiner(StockFirmware):
             # cannot update, no API access usually
             pass
 
-
     @staticmethod
     def _get_summary_content(summary: dict):
         if "SUMMARY" in summary:

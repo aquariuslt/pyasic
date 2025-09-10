@@ -404,6 +404,14 @@ class AntminerModern(BMMiner):
             protocol=protocol,
         )
 
+    async def download_logs(self) -> dict or None:
+        try:
+            data = await self.web.download_logs()
+            return data
+        except APIError:
+            pass
+        return {"success": False, "message": "Failed to download logs, unknown error."}
+
     async def _is_mining(self, web_get_conf: dict = None) -> Optional[bool]:
         if web_get_conf is None:
             try:

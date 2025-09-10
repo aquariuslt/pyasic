@@ -60,11 +60,20 @@ class AntminerModernWebAPI(BaseWebAPI):
                     url,
                     auth=auth,
                     timeout=settings.get("api_function_timeout", 120),
-                    files={"firmware": (file.name, file_content, "application/octet-stream")},
+                    files={
+                        "firmware": (
+                            file.name,
+                            file_content,
+                            "application/octet-stream",
+                        )
+                    },
                     data=parameters,
                 )
         except httpx.HTTPError as e:
-            return {"success": False, "message": f"HTTP error occurred: {type(e), str(e)}"}
+            return {
+                "success": False,
+                "message": f"HTTP error occurred: {type(e), str(e)}",
+            }
         else:
             if data.status_code == 200:
                 try:
@@ -72,7 +81,6 @@ class AntminerModernWebAPI(BaseWebAPI):
                 except json.decoder.JSONDecodeError:
                     return {"success": False, "message": "Failed to decode JSON"}
         return {"success": False, "message": "Unknown error occurred"}
-
 
     async def send_command(
         self,
@@ -109,7 +117,10 @@ class AntminerModernWebAPI(BaseWebAPI):
                 else:
                     data = await client.get(url, auth=auth)
         except httpx.HTTPError as e:
-            return {"success": False, "message": f"HTTP error occurred: {type(e), str(e)}"}
+            return {
+                "success": False,
+                "message": f"HTTP error occurred: {type(e), str(e)}",
+            }
         else:
             if data.status_code == 200:
                 try:
@@ -228,6 +239,78 @@ class AntminerModernWebAPI(BaseWebAPI):
             dict: A dictionary containing the network configuration of the miner.
         """
         return await self.send_command("get_network_info")
+
+    async def _create_log_backup(self, log_list: list) -> dict or None:
+        command = "create_log_backup"
+        url = f"http://{self.ip}:{self.port}/cgi-bin/{command}.cgi"
+        auth = httpx.DigestAuth(self.username, self.pwd)
+        try:
+            async with httpx.AsyncClient(transport=settings.transport()) as client:
+                data = await client.post(
+                    url,
+                    json=log_list,
+                    auth=auth,
+                    timeout=settings.get("api_function_timeout", 3),
+                )
+        except httpx.HTTPError as e:
+            return {
+                "success": False,
+                "message": f"HTTP error occurred: {type(e), str(e)}",
+            }
+        else:
+            if data.status_code == 200:
+                try:
+                    json_data = data.json()
+                    return {
+                        "success": json_data.get("stats") == "success",
+                        "message": json_data.get("msg"),
+                        "msg": json_data.get("msg"),
+                    }
+                except json.decoder.JSONDecodeError:
+                    return {"success": False, "message": "Failed to decode JSON"}
+        return {"success": False, "message": "Unknown error occurred"}
+
+    async def _download_log_file(self, filename: str) -> dict or None:
+        url = f"http://{self.ip}:{self.port}/log/{filename}"
+        auth = httpx.DigestAuth(self.username, self.pwd)
+        try:
+            async with httpx.AsyncClient(transport=settings.transport()) as client:
+                data = await client.get(
+                    url,
+                    auth=auth,
+                    timeout=settings.get("api_function_timeout", 3),
+                )
+        except httpx.HTTPError as e:
+            return {
+                "success": False,
+                "message": f"HTTP error occurred: {type(e), str(e)}",
+            }
+        else:
+            if data.status_code == 200:
+                try:
+                    return {
+                        "success": True,
+                        "message": "Log file downloaded successfully",
+                        "data": {
+                            "content": data.content,
+                            "ext": "tar",
+                        },
+                    }
+                except json.decoder.JSONDecodeError:
+                    return {"success": False, "message": "Failed to decode JSON"}
+        return {"success": False, "message": "Unknown error occurred"}
+
+    async def download_logs(self) -> dict or None:
+        ret = await self.send_command("dlog")
+        if not ret.get("dlog"):
+            return {"success": False, "message": "failed to fetch log list"}
+        log_list = ret.get("log_list", [])
+        log_backup_ret = await self._create_log_backup(log_list[-7:])  # last 7 days
+        success = log_backup_ret.get("success")
+        if not success:
+            return log_backup_ret
+        filename = log_backup_ret.get("msg")
+        return await self._download_log_file(filename)
 
     async def summary(self) -> dict:
         """Get a summary of the miner's status and performance.
