@@ -30,7 +30,6 @@ from pyasic.miners.data import DataFunction, DataLocations, DataOptions, RPCAPIC
 from pyasic.miners.device.firmware import StockFirmware
 from pyasic.rpc.btminer import BTMinerRPCAPI
 
-
 BTMINER_DATA_LOC = DataLocations(
     **{
         str(DataOptions.MAC): DataFunction(
@@ -417,9 +416,7 @@ class BTMiner(StockFirmware):
 
         return hostname
 
-    async def _get_serial_number(
-        self, rpc_get_miner_info: dict = None
-    ) -> Optional[str]:
+    async def _get_serial_number(self, rpc_get_miner_info: dict = None) -> str | None:
         serial_number = None
         if rpc_get_miner_info is None:
             try:

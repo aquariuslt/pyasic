@@ -127,7 +127,11 @@ class AntminerModernWebAPI(BaseWebAPI):
                     return data.json()
                 except json.decoder.JSONDecodeError:
                     return {"success": False, "message": "Failed to decode JSON"}
-        return {"success": False, "message": "Unknown error occurred"}
+            else:
+                return {
+                    "success": False,
+                    "message": f"Unknown error occurred: {data.status_code, data.text}",
+                }
 
     async def multicommand(
         self, *commands: str, ignore_errors: bool = False, allow_warning: bool = True
@@ -278,7 +282,7 @@ class AntminerModernWebAPI(BaseWebAPI):
                 data = await client.get(
                     url,
                     auth=auth,
-                    timeout=settings.get("api_function_timeout", 3),
+                    timeout=30,  # downloading log file may take longer time
                 )
         except httpx.HTTPError as e:
             return {
@@ -303,7 +307,10 @@ class AntminerModernWebAPI(BaseWebAPI):
     async def download_logs(self) -> dict or None:
         ret = await self.send_command("dlog")
         if not ret.get("dlog"):
-            return {"success": False, "message": "failed to fetch log list"}
+            return {
+                "success": False,
+                "message": f"failed to fetch log list: {ret.get('message')}",
+            }
         log_list = ret.get("log_list", [])
         log_backup_ret = await self._create_log_backup(log_list[-7:])  # last 7 days
         success = log_backup_ret.get("success")

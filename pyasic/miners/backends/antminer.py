@@ -60,6 +60,10 @@ ANTMINER_MODERN_DATA_LOC = DataLocations(
             "_get_hashrate",
             [RPCAPICommand("rpc_summary", "summary")],
         ),
+        str(DataOptions.SERIAL_NUMBER): DataFunction(
+            "_get_serial_number",
+            [WebAPICommand("web_get_system_info", "get_system_info")],
+        ),
         str(DataOptions.EXPECTED_HASHRATE): DataFunction(
             "_get_expected_hashrate",
             [RPCAPICommand("rpc_stats", "stats")],
@@ -198,6 +202,21 @@ class AntminerModern(BMMiner):
         cfg.mining_mode = MiningModeConfig.normal()
         await self.send_config(cfg)
         return True
+
+    async def _get_serial_number(
+        self, web_get_system_info: dict = None
+    ) -> Optional[str]:
+        if web_get_system_info is None:
+            try:
+                web_get_system_info = await self.web.get_system_info()
+            except APIError:
+                pass
+
+        if web_get_system_info is not None:
+            try:
+                return web_get_system_info["serinum"]
+            except KeyError:
+                pass
 
     async def _get_hostname(self, web_get_system_info: dict = None) -> Optional[str]:
         if web_get_system_info is None:

@@ -32,6 +32,7 @@ from httpx._auth import Auth, FunctionAuth
 from pyasic import settings
 from pyasic.logger import logger
 from pyasic.miners.antminer import *
+from pyasic.miners.antminer.bmminer.X21.S21 import BMMinerS21EHydro
 from pyasic.miners.auradine import *
 from pyasic.miners.avalonminer import *
 from pyasic.miners.backends import *
@@ -49,6 +50,46 @@ from pyasic.miners.innosilicon import *
 from pyasic.miners.luckyminer import *
 from pyasic.miners.volcminer import *
 from pyasic.miners.whatsminer import *
+
+
+class AntminerUnknown(BMMiner, AntMinerMake):
+    pass
+
+
+class WhatsminerUnknown(BTMiner, WhatsMinerMake):
+    pass
+
+
+class AvalonUnknown(AvalonMiner, AvalonMinerMake):
+    pass
+
+
+class InnosiliconUnknown(Innosilicon, InnosiliconMake):
+    pass
+
+
+class GoldshellUnknown(GoldshellMiner, GoldshellMake):
+    pass
+
+
+class AuradineUnknown(Auradine, AuradineMake):
+    pass
+
+
+class IceRiverUnknown(IceRiver, IceRiverMake):
+    pass
+
+
+class HammerUnknown(BlackMiner, HammerMake):
+    pass
+
+
+class VolcMinerUnknown(BlackMiner, VolcMinerMake):
+    pass
+
+
+class ElphapexUnknown(ElphapexMiner, ElphapexMake):
+    pass
 
 
 class MinerTypes(enum.Enum):
@@ -75,7 +116,7 @@ class MinerTypes(enum.Enum):
 
 MINER_CLASSES = {
     MinerTypes.ANTMINER: {
-        None: type("AntminerUnknown", (BMMiner, AntMinerMake), {}),
+        None: AntminerUnknown,
         "ANTMINER D3": CGMinerD3,
         "ANTMINER HS3": BMMinerHS3,
         "ANTMINER L3+": BMMinerL3Plus,
@@ -130,11 +171,12 @@ MINER_CLASSES = {
         "ANTMINER S21+": BMMinerS21Plus,
         "ANTMINER S21+ HYD.": BMMinerS21PlusHydro,
         "ANTMINER S21 PRO": BMMinerS21Pro,
+        "ANTMINER S21E HYD.": BMMinerS21EHydro,
         "ANTMINER T21": BMMinerT21,
         "ANTMINER S21 HYD.": BMMinerS21Hydro,
     },
     MinerTypes.WHATSMINER: {
-        None: type("WhatsminerUnknown", (BTMiner, WhatsMinerMake), {}),
+        None: WhatsminerUnknown,
         "M20PV10": BTMinerM20PV10,
         "M20PV30": BTMinerM20PV30,
         "M20S+V30": BTMinerM20SPlusV30,
@@ -500,7 +542,7 @@ MINER_CLASSES = {
         "M70VM30": BTMinerM70VM30,
     },
     MinerTypes.AVALONMINER: {
-        None: type("AvalonUnknown", (AvalonMiner, AvalonMinerMake), {}),
+        None: AvalonUnknown,
         "AVALONMINER 721": CGMinerAvalon721,
         "AVALONMINER 741": CGMinerAvalon741,
         "AVALONMINER 761": CGMinerAvalon761,
@@ -520,14 +562,14 @@ MINER_CLASSES = {
         "AVALON Q": CGMinerAvalonQHome,
     },
     MinerTypes.INNOSILICON: {
-        None: type("InnosiliconUnknown", (Innosilicon, InnosiliconMake), {}),
+        None: InnosiliconUnknown,
         "T3H+": InnosiliconT3HPlus,
         "A10X": InnosiliconA10X,
         "A11": InnosiliconA11,
         "A11MX": InnosiliconA11MX,
     },
     MinerTypes.GOLDSHELL: {
-        None: type("GoldshellUnknown", (GoldshellMiner, GoldshellMake), {}),
+        None: GoldshellUnknown,
         "GOLDSHELL CK5": GoldshellCK5,
         "GOLDSHELL HS5": GoldshellHS5,
         "GOLDSHELL KD5": GoldshellKD5,
@@ -648,7 +690,7 @@ MINER_CLASSES = {
         "ANTMINER T21": LUXMinerT21,
     },
     MinerTypes.AURADINE: {
-        None: type("AuradineUnknown", (Auradine, AuradineMake), {}),
+        None: AuradineUnknown,
         "AT1500": AuradineFluxAT1500,
         "AT2860": AuradineFluxAT2860,
         "AT2880": AuradineFluxAT2880,
@@ -682,7 +724,7 @@ MINER_CLASSES = {
         "LV07": LuckyMinerLV07,
     },
     MinerTypes.ICERIVER: {
-        None: type("IceRiverUnknown", (IceRiver, IceRiverMake), {}),
+        None: IceRiverUnknown,
         "KS0": IceRiverKS0,
         "KS1": IceRiverKS1,
         "KS2": IceRiverKS2,
@@ -695,15 +737,15 @@ MINER_CLASSES = {
         "10306": IceRiverAL3,
     },
     MinerTypes.HAMMER: {
-        None: type("HammerUnknown", (BlackMiner, HammerMake), {}),
+        None: HammerUnknown,
         "HAMMER D10": HammerD10,
     },
     MinerTypes.VOLCMINER: {
-        None: type("VolcMinerUnknown", (BlackMiner, VolcMinerMake), {}),
+        None: VolcMinerUnknown,
         "VOLCMINER D1": VolcMinerD1,
     },
     MinerTypes.ELPHAPEX: {
-        None: type("ElphapexUnknown", (ElphapexMiner, ElphapexMake), {}),
+        None: ElphapexUnknown,
         "DG1+": ElphapexDG1Plus,
         "DG1": ElphapexDG1,
         "DG1-Home": ElphapexDG1Home,
