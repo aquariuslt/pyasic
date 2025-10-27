@@ -16,7 +16,9 @@
 from __future__ import annotations
 
 import asyncio
+import io
 import json
+import tarfile
 from pathlib import Path
 from typing import Any
 
@@ -188,6 +190,33 @@ class AntminerModernWebAPI(BaseWebAPI):
                     pass
         return {command: {}}
 
+    async def _invoke_http_get(self, path: str, port: int = None)-> dict:
+        url_port = self.port if port is None else port
+        url = f"http://{self.ip}:{url_port}/{path}"
+
+        try:
+            async with httpx.AsyncClient(transport=settings.transport()) as client:
+                data = await client.get(
+                        url,
+                        timeout=settings.get("api_function_timeout", 3),
+                    )
+        except httpx.HTTPError as e:
+            return {
+                "success": False,
+                "message": f"HTTP error occurred: {type(e), str(e)}",
+            }
+        else:
+            if data.status_code == 200:
+                return {
+                    "success": True,
+                    "data": data.text,
+                }
+            else:
+                return {
+                    "success": False,
+                    "message": f"Unknown error occurred: {data.status_code, data.text}",
+                }
+
     async def get_miner_conf(self) -> dict:
         """Retrieve the miner configuration from the Antminer device.
 
@@ -292,16 +321,26 @@ class AntminerModernWebAPI(BaseWebAPI):
         else:
             if data.status_code == 200:
                 try:
+                    gz_buffer = io.BytesIO()
+                    with tarfile.open(fileobj=io.BytesIO(data.content), mode='r') as tar_in:
+                        with tarfile.open(fileobj=gz_buffer, mode='w:gz') as tar_out:
+                            for member in tar_in.getmembers():
+                                member_content = tar_in.extractfile(member)
+                                if member_content:
+                                    tar_out.addfile(member, member_content)
+                                    member_content.close()
+
+                    gz_buffer.seek(0)
                     return {
                         "success": True,
                         "message": "Log file downloaded successfully",
                         "data": {
-                            "content": data.content,
-                            "ext": "tar",
+                            "content": gz_buffer.getvalue(),
+                            "ext": "tar.gz",
                         },
                     }
-                except json.decoder.JSONDecodeError:
-                    return {"success": False, "message": "Failed to decode JSON"}
+                except Exception as e:
+                    return {"success": False, "message": f"Failed to extract/compress log file: {e}"}
         return {"success": False, "message": "Unknown error occurred"}
 
     async def download_logs(self) -> dict or None:
@@ -374,6 +413,38 @@ class AntminerModernWebAPI(BaseWebAPI):
             "keep_settings": keep_settings,
         }
         return await self._update_firmware(file, **parameters)
+
+    async def get_serial_number(self) -> dict:
+        """Get the serial number of the miner.
+
+        Returns:
+            dict: A dictionary containing the serial number of the miner.
+        """
+        response = await self._invoke_http_get("get_sn", 6060)
+        if response.get("success") and response.get("data"):
+            return {
+                "serinum": response.get("data"),
+            }
+
+        return {}
+
+    async def get_wattage(self) -> dict:
+        """Get the current power of the miner.
+
+        Returns:
+            dict: A dictionary containing the power of the miner.
+        """
+        response = await self._invoke_http_get("miner_power", 6060)
+        if response.get("success") and response.get("data"):
+            power = response.get("data")
+            if power is not None and str(power).startswith("miner power:"):
+                power = power.split(':')[-1]
+                if power.isdigit():
+                    return {
+                        "wattage": int(power),
+                    }
+
+        return {}
 
 
 class AntminerOldWebAPI(BaseWebAPI):

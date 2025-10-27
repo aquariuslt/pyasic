@@ -212,11 +212,34 @@ class AntminerModern(BMMiner):
             except APIError:
                 pass
 
-        if web_get_system_info is not None:
+        if web_get_system_info is not None and "serinum" in web_get_system_info:
+            return web_get_system_info["serinum"]
+
+        try:
+            web_custom_api_result = await self.web.get_serial_number()
+            if web_custom_api_result is not None and "serinum" in web_custom_api_result:
+                return web_custom_api_result["serinum"]
+        except APIError:
+            pass
+
+    async def _get_wattage(
+        self, web_get_system_info: dict = None
+    ) -> Optional[int]:
+        if web_get_system_info is None:
             try:
-                return web_get_system_info["serinum"]
-            except KeyError:
+                web_get_system_info = await self.web.get_system_info()
+            except APIError:
                 pass
+
+        if web_get_system_info is not None and "wattage" in web_get_system_info:
+            return web_get_system_info["wattage"]
+
+        try:
+            web_custom_api_result = await self.web.get_wattage()
+            if web_custom_api_result is not None and "wattage" in web_custom_api_result:
+                return web_custom_api_result["wattage"]
+        except APIError:
+            pass
 
     async def _get_hostname(self, web_get_system_info: dict = None) -> Optional[str]:
         if web_get_system_info is None:
