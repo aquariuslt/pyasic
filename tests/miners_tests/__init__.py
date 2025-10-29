@@ -98,6 +98,7 @@ class MinersTest(unittest.TestCase):
                 "mac",
                 "expected_hashrate",
                 "uptime",
+                "serial_number",
                 "wattage",
                 "wattage_limit",
                 "pools",

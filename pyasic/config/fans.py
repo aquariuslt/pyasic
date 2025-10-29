@@ -324,19 +324,24 @@ class FanModeConfig(MinerConfigOption):
     @classmethod
     def from_vnish(cls, web_settings: dict):
         try:
-            mode = web_settings["miner"]["cooling"]["mode"]["name"]
+            if "miner" in web_settings:
+                miner = web_settings["miner"]
+            else:
+                miner = web_settings
+            mode = miner["cooling"]["mode"]["name"]
         except LookupError:
             return cls.default()
 
         if mode == "auto":
-            return cls.normal().from_vnish(web_settings["miner"]["cooling"])
+            return cls.normal().from_vnish(miner["cooling"])
         elif mode == "manual":
-            return cls.manual().from_vnish(web_settings["miner"]["cooling"])
+            return cls.manual().from_vnish(miner["cooling"])
         elif mode == "immers":
             return cls.immersion()
 
     @classmethod
     def from_boser(cls, grpc_miner_conf: dict):
+        print(grpc_miner_conf)
         try:
             temperature_conf = grpc_miner_conf["temperature"]
         except LookupError:

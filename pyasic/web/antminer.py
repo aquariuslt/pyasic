@@ -190,16 +190,16 @@ class AntminerModernWebAPI(BaseWebAPI):
                     pass
         return {command: {}}
 
-    async def _invoke_http_get(self, path: str, port: int = None)-> dict:
+    async def _invoke_http_get(self, path: str, port: int = None) -> dict:
         url_port = self.port if port is None else port
         url = f"http://{self.ip}:{url_port}/{path}"
 
         try:
             async with httpx.AsyncClient(transport=settings.transport()) as client:
                 data = await client.get(
-                        url,
-                        timeout=settings.get("api_function_timeout", 3),
-                    )
+                    url,
+                    timeout=settings.get("api_function_timeout", 3),
+                )
         except httpx.HTTPError as e:
             return {
                 "success": False,
@@ -322,8 +322,10 @@ class AntminerModernWebAPI(BaseWebAPI):
             if data.status_code == 200:
                 try:
                     gz_buffer = io.BytesIO()
-                    with tarfile.open(fileobj=io.BytesIO(data.content), mode='r') as tar_in:
-                        with tarfile.open(fileobj=gz_buffer, mode='w:gz') as tar_out:
+                    with tarfile.open(
+                        fileobj=io.BytesIO(data.content), mode="r"
+                    ) as tar_in:
+                        with tarfile.open(fileobj=gz_buffer, mode="w:gz") as tar_out:
                             for member in tar_in.getmembers():
                                 member_content = tar_in.extractfile(member)
                                 if member_content:
@@ -340,7 +342,10 @@ class AntminerModernWebAPI(BaseWebAPI):
                         },
                     }
                 except Exception as e:
-                    return {"success": False, "message": f"Failed to extract/compress log file: {e}"}
+                    return {
+                        "success": False,
+                        "message": f"Failed to extract/compress log file: {e}",
+                    }
         return {"success": False, "message": "Unknown error occurred"}
 
     async def download_logs(self) -> dict or None:
@@ -438,7 +443,7 @@ class AntminerModernWebAPI(BaseWebAPI):
         if response.get("success") and response.get("data"):
             power = response.get("data")
             if power is not None and str(power).startswith("miner power:"):
-                power = power.split(':')[-1]
+                power = power.split(":")[-1]
                 if power.isdigit():
                     return {
                         "wattage": int(power),

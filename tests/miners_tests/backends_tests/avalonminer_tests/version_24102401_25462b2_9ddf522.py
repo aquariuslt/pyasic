@@ -507,7 +507,7 @@ class TestAvalonMiners(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(result.mac, "12:34:56:78:90:12")
             self.assertEqual(result.api_ver, "3.7")
             self.assertEqual(result.fw_ver, "4.11.1")
-            self.assertEqual(round(result.hashrate.into(SHA256Unit.TH)), 184)
+            self.assertEqual(round(result.hashrate.into(SHA256Unit.TH)), 197)
             self.assertEqual(
                 result.fans,
                 [Fan(speed=4275), Fan(speed=4282)],

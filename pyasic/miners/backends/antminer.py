@@ -52,6 +52,10 @@ ANTMINER_MODERN_DATA_LOC = DataLocations(
             "_get_fw_ver",
             [RPCAPICommand("rpc_version", "version")],
         ),
+        str(DataOptions.WATTAGE): DataFunction(
+            "_get_wattage",
+            [WebAPICommand("web_get_system_info", "get_system_info")],
+        ),
         str(DataOptions.HOSTNAME): DataFunction(
             "_get_hostname",
             [WebAPICommand("web_get_system_info", "get_system_info")],
@@ -222,9 +226,7 @@ class AntminerModern(BMMiner):
         except APIError:
             pass
 
-    async def _get_wattage(
-        self, web_get_system_info: dict = None
-    ) -> Optional[int]:
+    async def _get_wattage(self, web_get_system_info: dict = None) -> Optional[int]:
         if web_get_system_info is None:
             try:
                 web_get_system_info = await self.web.get_system_info()
