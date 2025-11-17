@@ -19,7 +19,7 @@ import warnings
 from typing import List, Optional, Protocol, Tuple, Type, TypeVar, Union
 
 from pyasic.config import MinerConfig
-from pyasic.data import Fan, HashBoard, MinerData
+from pyasic.data import Fan, HashBoard, MinerData, PowerSupply
 from pyasic.data.device import DeviceInfo
 from pyasic.data.error_codes import MinerErrorData
 from pyasic.data.pools import PoolMetrics
@@ -331,6 +331,14 @@ class MinerProtocol(Protocol):
         """
         return await self._get_fans()
 
+    async def get_psus(self) -> List[PowerSupply]:
+        """Get PSU data from the miner in the form [psu_1, psu_2].
+
+        Returns:
+            A list of PSU data.
+        """
+        return await self._get_psus()
+
     async def get_fan_psu(self) -> Optional[int]:
         """Get PSU fan speed from the miner.
 
@@ -421,6 +429,9 @@ class MinerProtocol(Protocol):
         pass
 
     async def _get_fans(self) -> List[Fan]:
+        return []
+
+    async def _get_psus(self) -> List[PowerSupply]:
         return []
 
     async def _get_fan_psu(self) -> Optional[int]:

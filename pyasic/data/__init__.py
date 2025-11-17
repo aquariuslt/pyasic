@@ -16,10 +16,9 @@
 import copy
 import time
 from datetime import datetime, timezone
-from typing import Any, Literal
+from typing import Any
 
 from pydantic import BaseModel, Field, computed_field, field_serializer
-from pydantic.main import IncEx
 
 from pyasic.config import MinerConfig
 from pyasic.config.mining import MiningModePowerTune
@@ -31,6 +30,7 @@ from .device import DeviceInfo
 from .error_codes import BraiinsOSError, InnosiliconError, WhatsminerError, X19Error
 from .error_codes.base import BaseMinerError
 from .fans import Fan
+from .power_supplies import PowerSupply
 
 
 class MinerData(BaseModel):
@@ -107,6 +107,7 @@ class MinerData(BaseModel):
     env_temp: float | None = None
 
     # power
+    psus: list[PowerSupply] = Field(default_factory=list)
     wattage: int | None = None
     voltage: float | None = None
     raw_wattage_limit: int | None = Field(exclude=True, default=None, repr=False)

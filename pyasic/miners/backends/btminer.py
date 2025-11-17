@@ -21,7 +21,7 @@ from typing import List, Optional
 import aiofiles
 
 from pyasic.config import MinerConfig, MiningModeConfig
-from pyasic.data import Fan, HashBoard
+from pyasic.data import Fan, HashBoard, PowerSupply
 from pyasic.data.error_codes import MinerErrorData, WhatsminerError
 from pyasic.data.pools import PoolMetrics, PoolUrl
 from pyasic.device.algorithm import AlgoHashRate
@@ -118,6 +118,10 @@ BTMINER_DATA_LOC = DataLocations(
         str(DataOptions.POOLS): DataFunction(
             "_get_pools",
             [RPCAPICommand("rpc_pools", "pools")],
+        ),
+        str(DataOptions.POWER_SUPPLIES): DataFunction(
+            "_get_psus",
+            [RPCAPICommand("rpc_get_psu", "get_psu")],
         ),
     }
 )
@@ -566,6 +570,25 @@ class BTMiner(StockFirmware):
                 pass
 
         return fans
+
+    async def _get_psus(self, rpc_get_psu: dict = None) -> List[PowerSupply]:
+        if rpc_get_psu is None:
+            try:
+                rpc_get_psu = await self.rpc.get_psu()
+            except APIError:
+                pass
+        psus = []
+        if rpc_get_psu is not None:
+            try:
+                psu_info = rpc_get_psu["Msg"]
+                psu = PowerSupply(
+                    serial_number=psu_info.get("serial_no"),
+                    temperature=psu_info.get("temp0"),
+                )
+                psus.append(psu)
+            except KeyError:
+                pass
+        return psus
 
     async def _get_fan_psu(
         self, rpc_summary: dict = None, rpc_get_psu: dict = None
