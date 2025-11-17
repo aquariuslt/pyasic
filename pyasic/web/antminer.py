@@ -16,8 +16,11 @@
 from __future__ import annotations
 
 import asyncio
+import gzip
 import io
 import json
+import logging
+import shutil
 import tarfile
 from pathlib import Path
 from typing import Any
@@ -301,7 +304,11 @@ class AntminerModernWebAPI(BaseWebAPI):
                     }
                 except json.decoder.JSONDecodeError:
                     return {"success": False, "message": "Failed to decode JSON"}
-        return {"success": False, "message": "Unknown error occurred"}
+            else:
+                return {
+                    "success": False,
+                    "message": f"Failed to create log file backup: code={data.status_code}, msg={data.text}",
+                }
 
     async def _download_log_file(self, filename: str) -> dict or None:
         url = f"http://{self.ip}:{self.port}/log/{filename}"
@@ -322,16 +329,9 @@ class AntminerModernWebAPI(BaseWebAPI):
             if data.status_code == 200:
                 try:
                     gz_buffer = io.BytesIO()
-                    with tarfile.open(
-                        fileobj=io.BytesIO(data.content), mode="r"
-                    ) as tar_in:
-                        with tarfile.open(fileobj=gz_buffer, mode="w:gz") as tar_out:
-                            for member in tar_in.getmembers():
-                                member_content = tar_in.extractfile(member)
-                                if member_content:
-                                    tar_out.addfile(member, member_content)
-                                    member_content.close()
-
+                    tar_file = io.BytesIO(data.content)
+                    with gzip.open(gz_buffer, "wb") as gz_file:
+                        shutil.copyfileobj(tar_file, gz_file)
                     gz_buffer.seek(0)
                     return {
                         "success": True,
@@ -342,11 +342,16 @@ class AntminerModernWebAPI(BaseWebAPI):
                         },
                     }
                 except Exception as e:
+                    logging.exception("Error extracting/compressing log file")
                     return {
                         "success": False,
                         "message": f"Failed to extract/compress log file: {e}",
                     }
-        return {"success": False, "message": "Unknown error occurred"}
+            else:
+                return {
+                    "success": False,
+                    "message": f"Failed to download log file: code={data.status_code}, msg={data.text}",
+                }
 
     async def download_logs(self) -> dict or None:
         ret = await self.send_command("dlog")
@@ -356,6 +361,7 @@ class AntminerModernWebAPI(BaseWebAPI):
                 "message": f"failed to fetch log list: {ret.get('message')}",
             }
         log_list = ret.get("log_list", [])
+        log_list.sort()
         log_backup_ret = await self._create_log_backup(log_list[-7:])  # last 7 days
         success = log_backup_ret.get("success")
         if not success:
