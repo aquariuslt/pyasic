@@ -339,6 +339,7 @@ class AntminerModernWebAPI(BaseWebAPI):
                         "data": {
                             "content": gz_buffer.getvalue(),
                             "ext": "tar.gz",
+                            "log_type": "compressed",
                         },
                     }
                 except Exception as e:
@@ -353,7 +354,7 @@ class AntminerModernWebAPI(BaseWebAPI):
                     "message": f"Failed to download log file: code={data.status_code}, msg={data.text}",
                 }
 
-    async def download_logs(self) -> dict or None:
+    async def _download_history_logs(self) -> dict | None:
         ret = await self.send_command("dlog")
         if not ret.get("dlog"):
             return {
@@ -368,6 +369,47 @@ class AntminerModernWebAPI(BaseWebAPI):
             return log_backup_ret
         filename = log_backup_ret.get("msg")
         return await self._download_log_file(filename)
+
+    async def _download_current_logs(self) -> dict | None:
+        command = "log"
+        url = f"http://{self.ip}:{self.port}/cgi-bin/{command}.cgi"
+        auth = httpx.DigestAuth(self.username, self.pwd)
+        try:
+            async with httpx.AsyncClient(transport=settings.transport()) as client:
+                data = await client.post(
+                    url,
+                    auth=auth,
+                    timeout=settings.get("api_function_timeout", 60),
+                )
+        except httpx.HTTPError as e:
+            return {
+                "success": False,
+                "message": f"HTTP error occurred: {type(e), str(e)}",
+            }
+        else:
+            if data.status_code == 200:
+                return {
+                    "success": True,
+                    "message": "successfully retrieved current log",
+                    "data": {
+                        "content": data.text,
+                        "ext": "log",
+                        "log_type": "flat",
+                    },
+                }
+            else:
+                return {
+                    "success": False,
+                    "message": f"Failed to download current log file: code={data.status_code}, msg={data.text}",
+                }
+
+    async def download_logs(self, category="history") -> dict | None:
+        if category not in ["history", "current"]:
+            raise ValueError("category must be either 'history' or 'current'")
+        if category == "history":
+            return await self._download_history_logs()
+        else:
+            return await self._download_current_logs()
 
     async def summary(self) -> dict:
         """Get a summary of the miner's status and performance.

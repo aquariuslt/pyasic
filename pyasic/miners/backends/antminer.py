@@ -448,9 +448,9 @@ class AntminerModern(BMMiner):
             protocol=protocol,
         )
 
-    async def download_logs(self) -> dict or None:
+    async def download_logs(self, category: str = "history") -> dict or None:
         try:
-            data = await self.web.download_logs()
+            data = await self.web.download_logs(category)
             return data
         except APIError:
             pass
