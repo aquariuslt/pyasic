@@ -25,6 +25,7 @@ class DataOptions(Enum):
     FW_VERSION = "fw_ver"
     HOSTNAME = "hostname"
     SERIAL_NUMBER = "serial_number"
+    CONTROL_BOARD = "control_board"
     HASHRATE = "hashrate"
     EXPECTED_HASHRATE = "expected_hashrate"
     HASHBOARDS = "hashboards"

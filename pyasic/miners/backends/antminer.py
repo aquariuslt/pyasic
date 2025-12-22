@@ -56,6 +56,10 @@ ANTMINER_MODERN_DATA_LOC = DataLocations(
             "_get_wattage",
             [WebAPICommand("web_get_system_info", "get_system_info")],
         ),
+        str(DataOptions.CONTROL_BOARD): DataFunction(
+            "_get_control_board",
+            [WebAPICommand("web_get_miner_type", "miner_type")],
+        ),
         str(DataOptions.HOSTNAME): DataFunction(
             "_get_hostname",
             [WebAPICommand("web_get_system_info", "get_system_info")],
@@ -206,6 +210,25 @@ class AntminerModern(BMMiner):
         cfg.mining_mode = MiningModeConfig.normal()
         await self.send_config(cfg)
         return True
+
+    async def _get_control_board(
+        self, web_get_miner_type: dict = None
+    ) -> Optional[str]:
+        if self.control_board:
+            return self.control_board
+
+        if web_get_miner_type is None:
+            try:
+                web_get_miner_type = await self.web.get_miner_type()
+            except APIError:
+                return self.control_board
+
+        if isinstance(web_get_miner_type, dict):
+            control_board = web_get_miner_type.get("subtype")
+            if control_board:
+                self.control_board = control_board
+
+        return self.control_board
 
     async def _get_serial_number(
         self, web_get_system_info: dict = None

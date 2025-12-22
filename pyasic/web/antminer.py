@@ -268,6 +268,10 @@ class AntminerModernWebAPI(BaseWebAPI):
         """
         return await self.send_command("get_system_info")
 
+    async def get_miner_type(self) -> dict:
+        """Retrieve miner type information such as model and control board."""
+        return await self.send_command("miner_type")
+
     async def get_network_info(self) -> dict:
         """Retrieve network configuration information from the miner.
 
@@ -276,7 +280,7 @@ class AntminerModernWebAPI(BaseWebAPI):
         """
         return await self.send_command("get_network_info")
 
-    async def _create_log_backup(self, log_list: list) -> dict or None:
+    async def _create_log_backup(self, log_list: list) -> dict | None:
         command = "create_log_backup"
         url = f"http://{self.ip}:{self.port}/cgi-bin/{command}.cgi"
         auth = httpx.DigestAuth(self.username, self.pwd)
@@ -310,7 +314,7 @@ class AntminerModernWebAPI(BaseWebAPI):
                     "message": f"Failed to create log file backup: code={data.status_code}, msg={data.text}",
                 }
 
-    async def _download_log_file(self, filename: str) -> dict or None:
+    async def _download_log_file(self, filename: str) -> dict | None:
         url = f"http://{self.ip}:{self.port}/log/{filename}"
         auth = httpx.DigestAuth(self.username, self.pwd)
         try:

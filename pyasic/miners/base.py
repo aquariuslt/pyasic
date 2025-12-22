@@ -48,6 +48,7 @@ class MinerProtocol(Protocol):
     raw_model: MinerModelType = None
     firmware: MinerFirmware = None
     algo: type[MinerAlgoType] = GenericAlgo
+    control_board: str | None = None
 
     expected_hashboards: int = None
     expected_chips: int = None
@@ -92,7 +93,10 @@ class MinerProtocol(Protocol):
     @property
     def device_info(self) -> DeviceInfo:
         return DeviceInfo(
-            make=self.make, model=self.raw_model, firmware=self.firmware, algo=self.algo
+            make=self.make,
+            model=self.raw_model,
+            firmware=self.firmware,
+            algo=self.algo,
         )
 
     @property
@@ -409,6 +413,9 @@ class MinerProtocol(Protocol):
 
     async def _get_serial_number(self) -> Optional[str]:
         pass
+
+    async def _get_control_board(self) -> Optional[str]:
+        return None
 
     async def _get_hashrate(self) -> Optional[AlgoHashRate]:
         pass

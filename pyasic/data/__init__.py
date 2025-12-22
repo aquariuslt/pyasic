@@ -49,6 +49,7 @@ class MinerData(BaseModel):
         api_ver: The current api version on the miner as a str.
         fw_ver: The current firmware version on the miner as a str.
         hostname: The network hostname of the miner as a str.
+        control_board: The control board model/subtype of the miner as a str.
         serial_number: Serial number of the miner as a str.
         hashrate: The hashrate of the miner in TH/s as a float.  Calculated automatically.
         expected_hashrate: The factory nominal hashrate of the miner in TH/s as a float.
@@ -89,6 +90,7 @@ class MinerData(BaseModel):
     api_ver: str | None = None
     fw_ver: str | None = None
     hostname: str | None = None
+    control_board: str | None = None
     serial_number: str | None = None
 
     # hashrate
