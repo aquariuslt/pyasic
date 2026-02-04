@@ -32,11 +32,13 @@ from httpx._auth import Auth, FunctionAuth
 from pyasic import settings
 from pyasic.logger import logger
 from pyasic.miners.antminer import *
+from pyasic.miners.antminer.bitfufu import *
 from pyasic.miners.antminer.bmminer.X21.S21 import BMMinerS21EHydro
 from pyasic.miners.antminer.luxos.X21.S21 import LUXMinerS21Hydro
 from pyasic.miners.auradine import *
 from pyasic.miners.avalonminer import *
 from pyasic.miners.backends import *
+from pyasic.miners.backends.bitfufu import BitfufuMiner
 from pyasic.miners.base import AnyMiner
 from pyasic.miners.bitaxe import *
 from pyasic.miners.blockminer import *
@@ -93,6 +95,10 @@ class ElphapexUnknown(ElphapexMiner, ElphapexMake):
     pass
 
 
+class BitfufuUnknown(BitfufuMiner, AntMinerMake):
+    pass
+
+
 class MinerTypes(enum.Enum):
     ANTMINER = 0
     WHATSMINER = 1
@@ -113,6 +119,7 @@ class MinerTypes(enum.Enum):
     LUCKYMINER = 16
     ELPHAPEX = 17
     MSKMINER = 18
+    BITFUFU = 19
 
 
 MINER_CLASSES = {
@@ -753,6 +760,10 @@ MINER_CLASSES = {
         "DG1": ElphapexDG1,
         "DG1-Home": ElphapexDG1Home,
     },
+    MinerTypes.BITFUFU: {
+        None: BitfufuUnknown,
+        "ANTMINER S19 XP EX": BitfufuS19XPEx,
+    },
 }
 
 
@@ -835,6 +846,7 @@ class MinerFactory:
                 MinerTypes.HAMMER: self.get_miner_model_hammer,
                 MinerTypes.VOLCMINER: self.get_miner_model_volcminer,
                 MinerTypes.ELPHAPEX: self.get_miner_model_elphapex,
+                MinerTypes.BITFUFU: self.get_miner_model_bitfufu,
             }
             fn = miner_model_fns.get(miner_type)
 
@@ -878,11 +890,18 @@ class MinerFactory:
             if text is not None:
                 mtype = self._parse_web_type(text, resp)
                 if mtype == MinerTypes.ANTMINER:
-                    # could still be mara
                     auth = httpx.DigestAuth("root", "root")
+                    # could still be mara
                     res = await self.send_web_command(ip, "/kaonsu/v1/brief", auth=auth)
                     if res is not None:
                         mtype = MinerTypes.MARATHON
+                    # could still be bitfufu
+                    res = await self.send_web_command(
+                        ip, "/cgi-bin/get_system_info.cgi", auth=auth
+                    )
+                    if res is not None:
+                        if "ant_hwv" in res:
+                            mtype = MinerTypes.BITFUFU
                 if mtype == MinerTypes.HAMMER:
                     res = await self.get_miner_model_hammer(ip)
                     if res is None:
@@ -1032,6 +1051,17 @@ class MinerFactory:
         if "RWGLR" in upper_data:
             return MinerTypes.MSKMINER
         if "ANTMINER" in upper_data and "DEVDETAILS" not in upper_data:
+            json_str = upper_data.replace("\x00", "")
+            try:
+                json_data = json.loads(json_str)
+            except json.JSONDecodeError:
+                pass
+            else:
+                try:
+                    if (json_data["VERSION"][0]["TYPE"]).endswith("EX"):
+                        return MinerTypes.BITFUFU
+                except (KeyError, IndexError):
+                    pass
             return MinerTypes.ANTMINER
         if (
             "INTCHAINS_QOMO" in upper_data
@@ -1179,6 +1209,45 @@ class MinerFactory:
                     )
                 return MINER_CLASSES[miner_type][None](ip)
             return UnknownMiner(str(ip))
+
+    async def get_miner_model_bitfufu(self, ip: str) -> MinerTypes | None:
+        tasks = [
+            asyncio.create_task(self._get_model_antminer_web(ip)),
+            asyncio.create_task(self._get_model_antminer_sock(ip)),
+        ]
+
+        return await concurrent_get_first_result(tasks, lambda x: x is not None)
+
+    async def _get_model_bitfufu_web(self, ip: str) -> str | None:
+        # last resort, this is slow
+        auth = httpx.DigestAuth(
+            "root", settings.get("default_antminer_web_password", "root")
+        )
+        web_json_data = await self.send_web_command(
+            ip, "/cgi-bin/get_system_info.cgi", auth=auth
+        )
+
+        try:
+            miner_model = web_json_data["minertype"]
+
+            return miner_model
+        except (TypeError, LookupError):
+            pass
+
+    async def _get_model_bitfufu_sock(self, ip: str) -> str | None:
+        sock_json_data = await self.send_api_command(ip, "version")
+        try:
+            miner_model = sock_json_data["VERSION"][0]["Type"]
+            return miner_model
+        except (TypeError, LookupError):
+            pass
+
+        sock_json_data = await self.send_api_command(ip, "stats")
+        try:
+            miner_model = sock_json_data["STATS"][0]["Type"]
+            return miner_model
+        except (TypeError, LookupError):
+            pass
 
     async def get_miner_model_antminer(self, ip: str) -> str | None:
         tasks = [

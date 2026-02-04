@@ -44,3 +44,7 @@ class LuxOSFirmware(BaseMiner):
 
 class MaraFirmware(BaseMiner):
     firmware = MinerFirmware.MARATHON
+
+
+class BitfufuFirmware(BaseMiner):
+    firmware = MinerFirmware.BITFUFU_OS

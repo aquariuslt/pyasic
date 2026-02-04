@@ -1,0 +1,675 @@
+# ------------------------------------------------------------------------------
+#  Copyright 2022 Upstream Data Inc                                            -
+#                                                                              -
+#  Licensed under the Apache License, Version 2.0 (the "License");             -
+#  you may not use this file except in compliance with the License.            -
+#  You may obtain a copy of the License at                                     -
+#                                                                              -
+#      http://www.apache.org/licenses/LICENSE-2.0                              -
+#                                                                              -
+#  Unless required by applicable law or agreed to in writing, software         -
+#  distributed under the License is distributed on an "AS IS" BASIS,           -
+#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.    -
+#  See the License for the specific language governing permissions and         -
+#  limitations under the License.                                              -
+# ------------------------------------------------------------------------------
+import logging
+from datetime import datetime
+from typing import List, Optional
+
+from pyasic.config import MinerConfig
+from pyasic.ssh.antminer import AntminerModernSSH
+from pyasic.data import HashBoard, X19Error, Fan
+from pyasic.data.error_codes import MinerErrorData
+from pyasic.data.pools import PoolMetrics, PoolUrl
+from pyasic.device.algorithm import AlgoHashRate
+from pyasic.errors import APIError
+from pyasic.miners.data import (
+    DataFunction,
+    DataLocations,
+    DataOptions,
+    RPCAPICommand,
+    WebAPICommand,
+)
+from pyasic.miners.device.firmware import BitfufuFirmware
+from pyasic.rpc.antminer import AntminerRPCAPI
+from pyasic.web.bitfufu import BitfufuAntminerWebAPI
+
+
+BITFUFU_ANTMINER_DATA_LOC = DataLocations(
+    **{
+        str(DataOptions.MAC): DataFunction(
+            "_get_mac",
+            [WebAPICommand("web_get_system_info", "get_system_info")],
+        ),
+        str(DataOptions.API_VERSION): DataFunction(
+            "_get_api_ver",
+            [RPCAPICommand("rpc_version", "version")],
+        ),
+        str(DataOptions.FW_VERSION): DataFunction(
+            "_get_fw_ver",
+            [RPCAPICommand("rpc_version", "version")],
+        ),
+        str(DataOptions.WATTAGE): DataFunction(
+            "_get_wattage",
+            [WebAPICommand("web_get_system_info", "get_system_info")],
+        ),
+        str(DataOptions.HOSTNAME): DataFunction(
+            "_get_hostname",
+            [WebAPICommand("web_get_system_info", "get_system_info")],
+        ),
+        str(DataOptions.HASHRATE): DataFunction(
+            "_get_hashrate",
+            [RPCAPICommand("rpc_summary", "summary")],
+        ),
+        str(DataOptions.SERIAL_NUMBER): DataFunction(
+            "_get_serial_number",
+            [WebAPICommand("web_get_system_info", "get_system_info")],
+        ),
+        str(DataOptions.EXPECTED_HASHRATE): DataFunction(
+            "_get_expected_hashrate",
+            [RPCAPICommand("rpc_stats", "stats")],
+        ),
+        str(DataOptions.FANS): DataFunction(
+            "_get_fans",
+            [RPCAPICommand("rpc_stats", "stats")],
+        ),
+        str(DataOptions.ERRORS): DataFunction(
+            "_get_errors",
+            [WebAPICommand("web_summary", "summary")],
+        ),
+        str(DataOptions.FAULT_LIGHT): DataFunction(
+            "_get_fault_light",
+            [WebAPICommand("web_get_blink_status", "get_blink_status")],
+        ),
+        str(DataOptions.HASHBOARDS): DataFunction(
+            "_get_hashboards",
+            [],
+        ),
+        str(DataOptions.IS_MINING): DataFunction(
+            "_is_mining",
+            [WebAPICommand("web_get_conf", "get_miner_conf")],
+        ),
+        str(DataOptions.UPTIME): DataFunction(
+            "_get_uptime",
+            [RPCAPICommand("rpc_stats", "stats")],
+        ),
+        str(DataOptions.POOLS): DataFunction(
+            "_get_pools",
+            [RPCAPICommand("rpc_pools", "pools")],
+        ),
+    }
+)
+
+
+class BitfufuMiner(BitfufuFirmware):
+    """Handler for AntMiners with the modern web interface, such as S19"""
+
+    _web_cls = BitfufuAntminerWebAPI
+    web: BitfufuAntminerWebAPI
+
+    _rpc_cls = AntminerRPCAPI
+    rpc: AntminerRPCAPI
+
+    _ssh_cls = AntminerModernSSH
+    ssh: AntminerModernSSH
+
+    data_locations = BITFUFU_ANTMINER_DATA_LOC
+
+    supports_shutdown = False
+    supports_power_modes = False
+
+    async def get_config(self) -> MinerConfig:
+        data = await self.web.get_miner_conf()
+        if data:
+            self.config = MinerConfig.from_am_modern(data)
+        return self.config
+
+    async def _get_api_ver(self, rpc_version: dict = None) -> Optional[str]:
+        if rpc_version is None:
+            try:
+                rpc_version = await self.rpc.version()
+            except APIError:
+                pass
+
+        if rpc_version is not None:
+            try:
+                self.api_ver = rpc_version["VERSION"][0]["API"]
+            except LookupError:
+                pass
+
+        return self.api_ver
+
+    async def _get_fw_ver(self, rpc_version: dict = None) -> Optional[str]:
+        if rpc_version is None:
+            try:
+                rpc_version = await self.rpc.version()
+            except APIError:
+                pass
+
+        if rpc_version is not None:
+            try:
+                self.fw_ver = rpc_version["VERSION"][0]["CompileTime"]
+            except LookupError:
+                pass
+
+        return self.fw_ver
+
+    async def _get_hashrate(self, rpc_summary: dict = None) -> Optional[AlgoHashRate]:
+        # get hr from API
+        if rpc_summary is None:
+            try:
+                rpc_summary = await self.rpc.summary()
+            except APIError:
+                pass
+
+        if rpc_summary is not None:
+            try:
+                return self.algo.hashrate(
+                    rate=float(rpc_summary["SUMMARY"][0]["GHS 5s"]),
+                    unit=self.algo.unit.GH,
+                ).into(self.algo.unit.default)
+            except (LookupError, ValueError, TypeError):
+                pass
+
+    async def _get_hashboards(self, rpc_stats: dict = None) -> List[HashBoard]:
+        if self.expected_hashboards is None:
+            return []
+
+        hashboards = []
+
+        if rpc_stats is None:
+            try:
+                rpc_stats = await self.rpc.stats()
+            except APIError:
+                pass
+
+        if rpc_stats is not None:
+            try:
+                board_offset = -1
+                boards = rpc_stats["STATS"]
+                if len(boards) > 1:
+                    for board_num in range(1, 16, 5):
+                        for _b_num in range(5):
+                            b = boards[1].get(f"chain_acn{board_num + _b_num}")
+
+                            if b and not b == 0 and board_offset == -1:
+                                board_offset = board_num
+                    if board_offset == -1:
+                        board_offset = 1
+
+                    real_slots = []
+
+                    for i in range(board_offset, board_offset + 4):
+                        try:
+                            key = f"chain_acs{i}"
+                            if boards[1].get(key, "") != "":
+                                real_slots.append(i)
+                        except LookupError:
+                            pass
+
+                    if len(real_slots) < 3:
+                        real_slots = list(
+                            range(board_offset, board_offset + self.expected_hashboards)
+                        )
+
+                    for i in real_slots:
+                        hashboard = HashBoard(
+                            slot=i - board_offset, expected_chips=self.expected_chips
+                        )
+
+                        chip_temp = boards[1].get(f"temp{i}")
+                        if chip_temp:
+                            hashboard.chip_temp = round(chip_temp)
+
+                        temp = boards[1].get(f"temp2_{i}")
+                        if temp:
+                            hashboard.temp = round(temp)
+
+                        hashrate = boards[1].get(f"chain_rate{i}")
+                        if hashrate:
+                            hashboard.hashrate = self.algo.hashrate(
+                                rate=float(hashrate), unit=self.algo.unit.GH
+                            ).into(self.algo.unit.default)
+
+                        chips = boards[1].get(f"chain_acn{i}")
+                        if chips:
+                            hashboard.chips = chips
+                            hashboard.missing = False
+                        if (not chips) or (not chips > 0):
+                            hashboard.missing = True
+                        hashboards.append(hashboard)
+            except (LookupError, ValueError, TypeError):
+                pass
+
+        return hashboards
+
+    async def _get_fans(self, rpc_stats: dict = None) -> List[Fan]:
+        if self.expected_fans is None:
+            return []
+
+        if rpc_stats is None:
+            try:
+                rpc_stats = await self.rpc.stats()
+            except APIError:
+                pass
+
+        fans = [Fan() for _ in range(self.expected_fans)]
+        if rpc_stats is not None:
+            try:
+                fan_offset = -1
+
+                for fan_num in range(1, 8, 4):
+                    for _f_num in range(4):
+                        f = rpc_stats["STATS"][1].get(f"fan{fan_num + _f_num}", 0)
+                        if f and not f == 0 and fan_offset == -1:
+                            fan_offset = fan_num
+                if fan_offset == -1:
+                    fan_offset = 1
+
+                for fan in range(self.expected_fans):
+                    fans[fan].speed = rpc_stats["STATS"][1].get(
+                        f"fan{fan_offset + fan}", 0
+                    )
+            except LookupError:
+                pass
+
+        return fans
+
+    async def _get_expected_hashrate(
+        self, rpc_stats: dict = None
+    ) -> Optional[AlgoHashRate]:
+        # X19 method, not sure compatibility
+        if rpc_stats is None:
+            try:
+                rpc_stats = await self.rpc.stats()
+            except APIError:
+                pass
+
+        if rpc_stats is not None:
+            try:
+                expected_rate = rpc_stats["STATS"][1]["total_rateideal"]
+                try:
+                    rate_unit = rpc_stats["STATS"][1]["rate_unit"]
+                except KeyError:
+                    rate_unit = "GH"
+                return self.algo.hashrate(
+                    rate=float(expected_rate), unit=self.algo.unit.from_str(rate_unit)
+                ).into(self.algo.unit.default)
+            except LookupError:
+                pass
+
+    async def _get_uptime(self, rpc_stats: dict = None) -> Optional[int]:
+        if rpc_stats is None:
+            try:
+                rpc_stats = await self.rpc.stats()
+            except APIError:
+                pass
+
+        if rpc_stats is not None:
+            try:
+                return int(rpc_stats["STATS"][1]["Elapsed"])
+            except LookupError:
+                pass
+
+    async def _get_pools(self, rpc_pools: dict = None) -> List[PoolMetrics]:
+        if rpc_pools is None:
+            try:
+                rpc_pools = await self.rpc.pools()
+            except APIError:
+                pass
+
+        pools_data = []
+        if rpc_pools is not None:
+            try:
+                pools = rpc_pools.get("POOLS", [])
+                for pool_info in pools:
+                    url = pool_info.get("URL")
+                    pool_url = PoolUrl.from_str(url) if url else None
+                    pool_data = PoolMetrics(
+                        accepted=pool_info.get("Accepted"),
+                        rejected=pool_info.get("Rejected"),
+                        get_failures=pool_info.get("Get Failures"),
+                        remote_failures=pool_info.get("Remote Failures"),
+                        active=pool_info.get("Stratum Active"),
+                        alive=pool_info.get("Status") == "Alive",
+                        url=pool_url,
+                        user=pool_info.get("User"),
+                        index=pool_info.get("POOL"),
+                    )
+                    pools_data.append(pool_data)
+            except LookupError:
+                pass
+        return pools_data
+
+    async def _get_serial_number(
+        self, web_get_system_info: dict = None
+    ) -> Optional[str]:
+        if web_get_system_info is None:
+            try:
+                web_get_system_info = await self.web.get_system_info()
+            except APIError:
+                pass
+
+        if web_get_system_info is not None and "serinum" in web_get_system_info:
+            return web_get_system_info["serinum"]
+
+        try:
+            web_custom_api_result = await self.web.get_serial_number()
+            if web_custom_api_result is not None and "serinum" in web_custom_api_result:
+                return web_custom_api_result["serinum"]
+        except APIError:
+            pass
+
+    async def _get_wattage(self, web_get_system_info: dict = None) -> Optional[int]:
+        if web_get_system_info is None:
+            try:
+                web_get_system_info = await self.web.get_system_info()
+            except APIError:
+                pass
+
+        if web_get_system_info is not None and "wattage" in web_get_system_info:
+            return web_get_system_info["wattage"]
+
+        try:
+            web_custom_api_result = await self.web.get_wattage()
+            if web_custom_api_result is not None and "wattage" in web_custom_api_result:
+                return web_custom_api_result["wattage"]
+        except APIError:
+            pass
+
+    async def _get_hostname(self, web_get_system_info: dict = None) -> Optional[str]:
+        if web_get_system_info is None:
+            try:
+                web_get_system_info = await self.web.get_system_info()
+            except APIError:
+                pass
+
+        if web_get_system_info is not None:
+            try:
+                return web_get_system_info["hostname"]
+            except KeyError:
+                pass
+
+    async def _get_mac(self, web_get_system_info: dict = None) -> Optional[str]:
+        if web_get_system_info is None:
+            try:
+                web_get_system_info = await self.web.get_system_info()
+            except APIError:
+                pass
+
+        if web_get_system_info is not None:
+            try:
+                return web_get_system_info["macaddr"]
+            except KeyError:
+                pass
+
+        try:
+            data = await self.web.get_network_info()
+            if data:
+                return data["macaddr"]
+        except KeyError:
+            pass
+
+    async def _get_errors(self, web_summary: dict = None) -> List[MinerErrorData]:
+        if web_summary is None:
+            try:
+                web_summary = await self.web.summary()
+            except APIError:
+                pass
+
+        errors = []
+        if web_summary is not None:
+            try:
+                for item in web_summary["SUMMARY"][0]["status"]:
+                    try:
+                        if not item["status"] == "s":
+                            errors.append(X19Error(error_message=item["msg"]))
+                    except KeyError:
+                        continue
+            except LookupError:
+                pass
+        return errors
+
+    async def _get_hashboards(self) -> List[HashBoard]:
+        if self.expected_hashboards is None:
+            return []
+
+        hashboards = [
+            HashBoard(slot=idx, expected_chips=self.expected_chips)
+            for idx in range(self.expected_hashboards)
+        ]
+
+        try:
+            rpc_stats = await self.rpc.stats(new_api=True)
+        except APIError:
+            return hashboards
+
+        if rpc_stats is not None:
+            try:
+                for board in rpc_stats["STATS"][0]["chain"]:
+                    hashboards[board["index"]].hashrate = self.algo.hashrate(
+                        rate=board["rate_real"], unit=self.algo.unit.GH
+                    ).into(self.algo.unit.default)
+                    hashboards[board["index"]].chips = board["asic_num"]
+
+                    if "S21+ Hyd" in self.model:
+                        hashboards[board["index"]].inlet_temp = board["temp_pcb"][0]
+                        hashboards[board["index"]].outlet_temp = board["temp_pcb"][2]
+                        hashboards[board["index"]].chip_temp = board["temp_pic"][0]
+                        board_temp_data = list(
+                            filter(
+                                lambda x: not x == 0,
+                                [
+                                    board["temp_pic"][1],
+                                    board["temp_pic"][2],
+                                    board["temp_pic"][3],
+                                    board["temp_pcb"][1],
+                                    board["temp_pcb"][3],
+                                ],
+                            )
+                        )
+                        hashboards[board["index"]].temp = (
+                            sum(board_temp_data) / len(board_temp_data)
+                            if len(board_temp_data) > 0
+                            else 0
+                        )
+
+                    else:
+                        board_temp_data = list(
+                            filter(lambda x: not x == 0, board["temp_pcb"])
+                        )
+                        hashboards[board["index"]].temp = (
+                            sum(board_temp_data) / len(board_temp_data)
+                            if len(board_temp_data) > 0
+                            else 0
+                        )
+                        chip_temp_data = list(
+                            filter(lambda x: not x == 0, board["temp_chip"])
+                        )
+                        hashboards[board["index"]].chip_temp = (
+                            sum(chip_temp_data) / len(chip_temp_data)
+                            if len(chip_temp_data) > 0
+                            else 0
+                        )
+
+                    hashboards[board["index"]].serial_number = board["sn"]
+                    hashboards[board["index"]].missing = False
+                    hashboards[board["index"]].chip_frequency = board["freq_avg"]
+            except LookupError:
+                pass
+        return hashboards
+
+    async def _get_fault_light(
+        self, web_get_blink_status: dict = None
+    ) -> Optional[bool]:
+        if self.light:
+            return self.light
+
+        if web_get_blink_status is None:
+            try:
+                web_get_blink_status = await self.web.get_blink_status()
+            except APIError:
+                pass
+
+        if web_get_blink_status is not None:
+            try:
+                self.light = web_get_blink_status["blink"]
+            except KeyError:
+                pass
+        return self.light
+
+    async def _get_expected_hashrate(
+        self, rpc_stats: dict = None
+    ) -> Optional[AlgoHashRate]:
+        if rpc_stats is None:
+            try:
+                rpc_stats = await self.rpc.stats()
+            except APIError:
+                pass
+
+        if rpc_stats is not None:
+            try:
+                expected_rate = rpc_stats["STATS"][1]["total_rateideal"]
+                try:
+                    rate_unit = rpc_stats["STATS"][1]["rate_unit"]
+                except KeyError:
+                    rate_unit = "GH"
+                return self.algo.hashrate(
+                    rate=float(expected_rate), unit=self.algo.unit.from_str(rate_unit)
+                ).into(self.algo.unit.default)
+            except LookupError:
+                pass
+
+    async def set_static_ip(
+        self,
+        ip: str,
+        dns: str,
+        gateway: str,
+        subnet_mask: str = "255.255.255.0",
+        hostname: str = None,
+    ):
+        if not hostname:
+            hostname = await self.get_hostname()
+        await self.web.set_network_conf(
+            ip=ip,
+            dns=dns,
+            gateway=gateway,
+            subnet_mask=subnet_mask,
+            hostname=hostname,
+            protocol=2,
+        )
+
+    async def set_dhcp(self, hostname: str = None):
+        if not hostname:
+            hostname = await self.get_hostname()
+        await self.web.set_network_conf(
+            ip="", dns="", gateway="", subnet_mask="", hostname=hostname, protocol=1
+        )
+
+    async def set_hostname(self, hostname: str):
+        cfg = await self.web.get_network_info()
+        dns = cfg["conf_dnsservers"]
+        gateway = cfg["conf_gateway"]
+        ip = cfg["conf_ipaddress"]
+        subnet_mask = cfg["conf_netmask"]
+        protocol = 1 if cfg["conf_nettype"] == "DHCP" else 2
+        await self.web.set_network_conf(
+            ip=ip,
+            dns=dns,
+            gateway=gateway,
+            subnet_mask=subnet_mask,
+            hostname=hostname,
+            protocol=protocol,
+        )
+
+    async def download_logs(self, category: str = "history") -> dict or None:
+        try:
+            data = await self.web.download_logs(category)
+            return data
+        except APIError:
+            pass
+        return {"success": False, "message": "Failed to download logs, unknown error."}
+
+    async def _is_mining(self, web_get_conf: dict = None) -> Optional[bool]:
+        if web_get_conf is None:
+            try:
+                web_get_conf = await self.web.get_miner_conf()
+            except APIError:
+                pass
+
+        if web_get_conf is not None:
+            try:
+                if str(web_get_conf["bitmain-work-mode"]).isdigit():
+                    return (
+                        False if int(web_get_conf["bitmain-work-mode"]) == 1 else True
+                    )
+                return False
+            except LookupError:
+                pass
+
+    async def _get_uptime(self, rpc_stats: dict = None) -> Optional[int]:
+        if rpc_stats is None:
+            try:
+                rpc_stats = await self.rpc.stats()
+            except APIError:
+                pass
+
+        if rpc_stats is not None:
+            try:
+                return int(rpc_stats["STATS"][1]["Elapsed"])
+            except LookupError:
+                pass
+
+    @staticmethod
+    def _parse_last_share_to_timestamp(last_share_time: str) -> int:
+        """
+        Parse the last share time from the string format to a timestamp.
+        :params last_share_time: The last share time string in the format "HH:MM:SS" or "0"
+        '0' means no shares have been submitted.
+        """
+        if last_share_time != "0":
+            try:
+                # Assuming the last share is in the format "YYYY-MM-DD HH:MM:SS"
+                now = datetime.now()
+                last_share_datetime = datetime.strptime(last_share_time, "%H:%M:%S")
+                last_share_datetime = last_share_datetime.replace(
+                    year=now.year, month=now.month, day=now.day
+                )
+                return int(last_share_datetime.timestamp())
+            except ValueError:
+                logging.debug(f"Failed to parse last share time: {last_share_time}")
+        return 0
+
+    async def _get_pools(self, rpc_pools: dict = None) -> List[PoolMetrics]:
+        if rpc_pools is None:
+            try:
+                rpc_pools = await self.rpc.pools()
+            except APIError:
+                pass
+
+        pools_data = []
+        if rpc_pools is not None:
+            try:
+                pools = rpc_pools.get("POOLS", [])
+                for pool_info in pools:
+                    url = pool_info.get("URL")
+                    pool_url = PoolUrl.from_str(url) if url else None
+                    pool_data = PoolMetrics(
+                        last_share_ts=self._parse_last_share_to_timestamp(
+                            pool_info.get("Last Share Time", "0")
+                        ),
+                        accepted=pool_info.get("Accepted"),
+                        rejected=pool_info.get("Rejected"),
+                        get_failures=pool_info.get("Get Failures"),
+                        remote_failures=pool_info.get("Remote Failures"),
+                        active=pool_info.get("Stratum Active"),
+                        alive=pool_info.get("Status") == "Alive",
+                        url=pool_url,
+                        user=pool_info.get("User"),
+                        index=pool_info.get("POOL"),
+                    )
+                    pools_data.append(pool_data)
+            except LookupError:
+                pass
+        return pools_data
