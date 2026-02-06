@@ -47,6 +47,11 @@ class MiningModeNormal(MinerConfigValue):
     def from_dict(cls, dict_conf: dict | None) -> "MiningModeNormal":
         return cls()
 
+    def as_bitfufuos_am(self) -> dict:
+        if settings.get("antminer_mining_mode_as_str", False):
+            return {"_ant_work_mode": "0", "_ant_multi_level": "SaleHashrate"}
+        return {"_ant_work_mode": 0, "_ant_multi_level": "SaleHashrate"}
+
     def as_am_modern(self) -> dict:
         if settings.get("antminer_mining_mode_as_str", False):
             return {"miner-mode": "0"}
@@ -93,6 +98,11 @@ class MiningModeSleep(MinerConfigValue):
     def from_dict(cls, dict_conf: dict | None) -> "MiningModeSleep":
         return cls()
 
+    def as_bitfufuos_am(self) -> dict:
+        if settings.get("antminer_mining_mode_as_str", False):
+            return {"_ant_work_mode": "1"}
+        return {"_ant_work_mode": 1}
+
     def as_am_modern(self) -> dict:
         if settings.get("antminer_mining_mode_as_str", False):
             return {"miner-mode": "1"}
@@ -133,6 +143,11 @@ class MiningModeLPM(MinerConfigValue):
     def from_dict(cls, dict_conf: dict | None) -> "MiningModeLPM":
         return cls()
 
+    def as_bitfufuos_am(self) -> dict:
+        if settings.get("antminer_mining_mode_as_str", False):
+            return {"_ant_work_mode": "0", "_ant_multi_level": "LPM"}
+        return {"miner-mode": 0, "_ant_multi_level": "LPM"}
+
     def as_am_modern(self) -> dict:
         if settings.get("antminer_mining_mode_as_str", False):
             return {"miner-mode": "3"}
@@ -162,6 +177,11 @@ class MiningModeHPM(MinerConfigValue):
     @classmethod
     def from_dict(cls, dict_conf: dict | None) -> "MiningModeHPM":
         return cls()
+
+    def as_bitfufuos_am(self) -> dict:
+        if settings.get("antminer_mining_mode_as_str", False):
+            return {"miner-mode": "0"}
+        return {"miner-mode": 0}
 
     def as_am_modern(self) -> dict:
         if settings.get("antminer_mining_mode_as_str", False):
@@ -203,6 +223,11 @@ class MiningModePowerTune(MinerConfigValue):
             cls_conf["scaling"] = ScalingConfig.from_dict(dict_conf["scaling"])
 
         return cls(**cls_conf)
+
+    def as_bitfufuos_am(self) -> dict:
+        if settings.get("antminer_mining_mode_as_str", False):
+            return {"_ant_work_mode": "0"}
+        return {"_ant_work_mode": 0}
 
     def as_am_modern(self) -> dict:
         if settings.get("antminer_mining_mode_as_str", False):
@@ -310,6 +335,11 @@ class MiningModeHashrateTune(MinerConfigValue):
             cls_conf["scaling"] = ScalingConfig.from_dict(dict_conf["scaling"])
 
         return cls(**cls_conf)
+
+    def as_bitfufuos_am(self) -> dict:
+        if settings.get("antminer_mining_mode_as_str", False):
+            return {"_ant_work_mode": "0"}
+        return {"_ant_work_mode": 0}
 
     def as_am_modern(self) -> dict:
         if settings.get("antminer_mining_mode_as_str", False):
@@ -459,6 +489,11 @@ class ManualBoardSettings(MinerConfigValue):
     def from_dict(cls, dict_conf: dict | None) -> "ManualBoardSettings":
         return cls(freq=dict_conf["freq"], volt=dict_conf["volt"])
 
+    def as_bitfufuos_am(self) -> dict:
+        if settings.get("antminer_mining_mode_as_str", False):
+            return {"_ant_work_mode": "0"}
+        return {"_ant_work_mode": 0}
+
     def as_am_modern(self) -> dict:
         if settings.get("antminer_mining_mode_as_str", False):
             return {"miner-mode": "0"}
@@ -490,6 +525,11 @@ class MiningModeManual(MinerConfigValue):
             global_volt=dict_conf["global_volt"],
             boards={i: ManualBoardSettings.from_dict(dict_conf[i]) for i in dict_conf},
         )
+
+    def as_bitfufuos_am(self) -> dict:
+        if settings.get("antminer_mining_mode_as_str", False):
+            return {"_ant_work_mode": "0"}
+        return {"_ant_work_mode": 0}
 
     def as_am_modern(self) -> dict:
         if settings.get("antminer_mining_mode_as_str", False):
@@ -581,6 +621,34 @@ class MiningModeConfig(MinerConfigOption):
         cls_attr = getattr(cls, mode)
         if cls_attr is not None:
             return cls_attr().from_dict(dict_conf)
+
+    @classmethod
+    def from_bitfufuos_am(cls, web_conf: dict):
+        work_mode = None
+        ex_hashrate_mode = None
+
+        if web_conf.get("bitmain-ex-hashrate") is not None:
+            ex_hashrate_mode = web_conf.get("bitmain-ex-hashrate")
+        if web_conf.get("bitmain-work-mode") is not None:
+            work_mode = web_conf["bitmain-work-mode"]
+            if work_mode == "":
+                work_mode = None
+            else:
+                work_mode = int(work_mode)
+        if work_mode is None:
+            return cls.default()
+        if int(work_mode) == 0:
+            if ex_hashrate_mode is None:
+                return cls.normal()
+            if ex_hashrate_mode == "LPM":
+                return cls.low()
+            if ex_hashrate_mode == "SaleHashrate":
+                return cls.normal()
+        elif int(work_mode) == 1:
+            return cls.sleep()
+        elif int(work_mode) == 3:
+            return cls.low()
+        return cls.default()
 
     @classmethod
     def from_am_modern(cls, web_conf: dict):

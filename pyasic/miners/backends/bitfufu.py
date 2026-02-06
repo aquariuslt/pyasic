@@ -122,8 +122,12 @@ class BitfufuMiner(BitfufuFirmware):
     async def get_config(self) -> MinerConfig:
         data = await self.web.get_miner_conf()
         if data:
-            self.config = MinerConfig.from_am_modern(data)
+            self.config = MinerConfig.from_bitfufuos_am(data)
         return self.config
+
+    async def send_config(self, config: MinerConfig, user_suffix: str = None) -> None:
+        self.config = config
+        await self.web.set_miner_conf(config.as_bitfufuos_am(user_suffix=user_suffix))
 
     async def _get_api_ver(self, rpc_version: dict = None) -> Optional[str]:
         if rpc_version is None:
@@ -410,6 +414,35 @@ class BitfufuMiner(BitfufuFirmware):
                 return data["macaddr"]
         except KeyError:
             pass
+
+    async def fault_light_on(self) -> bool:
+        # this should time out, after it does do a check
+        await self.web.blink(blink=True)
+        try:
+            data = await self.web.get_blink_status()
+            if data:
+                if data["blink"]:
+                    self.light = True
+        except KeyError:
+            pass
+        return self.light
+
+    async def fault_light_off(self) -> bool:
+        await self.web.blink(blink=False)
+        try:
+            data = await self.web.get_blink_status()
+            if data:
+                if not data["blink"]:
+                    self.light = False
+        except KeyError:
+            pass
+        return self.light
+
+    async def reboot(self) -> bool:
+        data = await self.web.reboot()
+        if data:
+            return True
+        return False
 
     async def _get_errors(self, web_summary: dict = None) -> List[MinerErrorData]:
         if web_summary is None:

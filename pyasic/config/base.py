@@ -95,6 +95,9 @@ class MinerConfigValue(BaseModel):
     def as_dict(self) -> dict:
         return self.model_dump()
 
+    def as_bitfufuos_am(self) -> dict:
+        return {}
+
     def as_am_modern(self) -> dict:
         return {}
 

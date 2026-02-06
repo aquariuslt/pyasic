@@ -35,15 +35,25 @@ class HttpClient:
         return resp
 
     async def post(
-        self, url: str, params: dict, json_: Any = None, timeout=None
+        self,
+        url: str,
+        params: dict = None,
+        json_: Any = None,
+        data: Any = None,
+        timeout=None,
     ) -> requests.Response:
+        kwargs = {}
+        if json_:
+            kwargs["json"] = json_
+        if data:
+            kwargs["data"] = data
         resp = await asyncio.to_thread(
             self.session.post,
             url,
             params=params,
-            json=json_,
             verify=False,
             timeout=timeout,
+            **kwargs,
         )
         resp.raise_for_status()
         return resp
@@ -146,6 +156,47 @@ class BitfufuAntminerWebAPI(BaseWebAPI):
         """
         return await self.send_command("get_network_info")
 
+    async def _download_current_logs(self) -> dict | None:
+        command = "hlog"
+        url = f"http://{self.ip}:{self.port}/cgi-bin/{command}.cgi"
+        auth = httpx.DigestAuth(self.username, self.pwd)
+        try:
+            async with httpx.AsyncClient(transport=settings.transport()) as client:
+                data = await client.post(
+                    url,
+                    auth=auth,
+                    timeout=settings.get("api_function_timeout", 60),
+                )
+        except httpx.HTTPError as e:
+            return {
+                "success": False,
+                "message": f"HTTP error occurred: {type(e), str(e)}",
+            }
+        else:
+            if data.status_code == 200:
+                return {
+                    "success": True,
+                    "message": "successfully retrieved current log",
+                    "data": {
+                        "content": data.text,
+                        "ext": "log",
+                        "log_type": "flat",
+                    },
+                }
+            else:
+                return {
+                    "success": False,
+                    "message": f"Failed to download current log file: code={data.status_code}, msg={data.text}",
+                }
+
+    async def download_logs(self, category="history") -> dict | None:
+        """
+        log category is not supported in bitfufu firmware
+        """
+        if category not in ["history", "current"]:
+            raise ValueError("category must be either 'history' or 'current'")
+        return await self._download_current_logs()
+
     async def summary(self) -> dict:
         """Get a summary of the miner's status and performance.
 
@@ -153,6 +204,19 @@ class BitfufuAntminerWebAPI(BaseWebAPI):
             dict: A summary of the miner's current operational status.
         """
         return await self.send_command("summary")
+
+    async def blink(self, blink: bool) -> dict:
+        """Control the blinking of the LED on the miner device.
+
+        Args:
+            blink (bool): True to start blinking, False to stop.
+
+        Returns:
+            dict: A dictionary response from the device after the command execution.
+        """
+        if blink:
+            return await self.send_command("blink", action="startBlink")
+        return await self.send_command("blink", action="stopBlink")
 
     async def get_blink_status(self) -> dict:
         """Check the status of the LED blinking on the miner.
@@ -162,6 +226,14 @@ class BitfufuAntminerWebAPI(BaseWebAPI):
         """
         return await self.send_command("get_blink_status")
 
+    async def reboot(self) -> dict:
+        """Reboot the miner device.
+
+        Returns:
+            dict: A dictionary response from the device confirming the reboot command.
+        """
+        return await self.send_command("reboot")
+
     async def get_miner_conf(self) -> dict:
         """Retrieve the miner configuration from the Antminer device.
 
@@ -169,6 +241,94 @@ class BitfufuAntminerWebAPI(BaseWebAPI):
             dict: A dictionary containing the current configuration of the miner.
         """
         return await self.send_command("get_miner_conf")
+
+    @staticmethod
+    def _fix_miner_conf(miner_conf: dict) -> list:
+        conf_key_order = [
+            "_ant_pool1url",
+            "_ant_pool1user",
+            "_ant_pool1pw",
+            "_ant_pool2url",
+            "_ant_pool2user",
+            "_ant_pool2pw",
+            "_ant_pool3url",
+            "_ant_pool3user",
+            "_ant_pool3pw",
+            "_ant_nobeeper",
+            "_ant_notempoverctrl",
+            "_ant_fan_customize_switch",
+            "_ant_fan_customize_value",
+            "_ant_freq",
+            "_ant_voltage",
+            "_ant_work_mode",
+            "_ant_multi_level",
+            "_ant_force_tuning",
+        ]
+        ant_defaults = {
+            "_ant_pool1url": "",
+            "_ant_pool1user": "",
+            "_ant_pool1pw": "",
+            "_ant_pool2url": "",
+            "_ant_pool2user": "",
+            "_ant_pool2pw": "",
+            "_ant_pool3url": "",
+            "_ant_pool3user": "",
+            "_ant_pool3pw": "",
+            "_ant_nobeeper": "false",
+            "_ant_notempoverctrl": "false",
+            "_ant_fan_customize_switch": "false",
+            "_ant_fan_customize_value": "100",
+            "_ant_freq": "",
+            "_ant_voltage": "",
+            "_ant_work_mode": "0",
+            "_ant_multi_level": "",
+            "_ant_force_tuning": "false",
+        }
+        ant_defaults.update(miner_conf)
+        ordered_form_data = [(key, ant_defaults.get(key, "")) for key in conf_key_order]
+        return ordered_form_data
+
+    async def set_miner_conf(self, conf: dict) -> dict:
+        """Set the configuration for the miner.
+
+        Args:
+            conf (dict): A dictionary of configuration settings to apply to the miner.
+
+        Returns:
+            dict: A dictionary response from the device after setting the configuration.
+        """
+        url = f"http://{self.ip}:{self.port}/cgi-bin/set_miner_conf.cgi"
+        fixed_form_data = self._fix_miner_conf(conf)
+        client = HttpClient()
+        client.set_digest_auth(self.username, self.pwd)
+        timeout = 30  # longer timeout is required here
+        try:
+            data = await client.post(
+                url,
+                timeout=timeout,
+                data=fixed_form_data,
+            )
+        except requests.exceptions.HTTPError as e:
+            return {
+                "success": False,
+                "message": f"HTTP error occurred: {type(e), str(e)}",
+            }
+        except (requests.exceptions.Timeout, asyncio.TimeoutError) as e:
+            return {
+                "success": False,
+                "message": f"Timeout error occurred: {type(e), str(e)}",
+            }
+        else:
+            if data.status_code == 200:
+                try:
+                    return data.json()
+                except json.decoder.JSONDecodeError:
+                    return {"success": False, "message": "Failed to decode JSON"}
+            else:
+                return {
+                    "success": False,
+                    "message": f"Unknown error occurred: {data.status_code, data.text}",
+                }
 
     async def get_system_info(self) -> dict:
         """Retrieve system information from the miner.

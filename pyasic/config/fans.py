@@ -244,6 +244,20 @@ class FanModeConfig(MinerConfigOption):
             return cls_attr().from_dict(dict_conf)
 
     @classmethod
+    def from_bitfufuos_am(cls, web_conf: dict):
+        if web_conf.get("bitmain-fan-ctrl") is not None:
+            fan_manual = web_conf["bitmain-fan-ctrl"]
+            if fan_manual:
+                speed = int(web_conf["bitmain-fan-pwm"])
+                if speed == 0:
+                    return cls.immersion()
+                return cls.manual(speed=speed)
+            else:
+                return cls.normal()
+        else:
+            return cls.default()
+
+    @classmethod
     def from_am_modern(cls, web_conf: dict):
         if web_conf.get("bitmain-fan-ctrl") is not None:
             fan_manual = web_conf["bitmain-fan-ctrl"]

@@ -36,6 +36,13 @@ class Pool(MinerConfigValue):
     user: str
     password: str
 
+    def as_bitfufuos_am(self, idx: int = 1, user_suffix: str | None = None) -> dict:
+        return {
+            f"_ant_pool{idx}url": self.url,
+            f"_ant_pool{idx}user": f"{self.user}{user_suffix or ''}",
+            f"_ant_pool{idx}pw": self.password,
+        }
+
     def as_am_modern(self, user_suffix: str | None = None) -> dict:
         return {
             "url": self.url,
@@ -249,6 +256,23 @@ class PoolGroup(MinerConfigValue):
             self.name = "".join(
                 random.choice(string.ascii_uppercase + string.digits) for _ in range(6)
             )  # generate random pool group name in case it isn't set
+
+    def as_bitfufuos_am(self, user_suffix: str | None = None) -> dict:
+        pools = {}
+        idx = 0
+        while idx < 3:
+            if len(self.pools) > idx:
+                pools.update(
+                    **self.pools[idx].as_bitfufuos_am(
+                        idx=idx + 1, user_suffix=user_suffix
+                    )
+                )
+            else:
+                pools.update(
+                    **Pool(url="", user="", password="").as_bitfufuos_am(idx=idx + 1)
+                )
+            idx += 1
+        return pools
 
     def as_am_modern(self, user_suffix: str | None = None) -> list:
         pools = []
@@ -493,6 +517,11 @@ class PoolConfig(MinerConfigValue):
             group_pools.append(pool)
         return cls(groups=[PoolGroup(pools=group_pools)])
 
+    def as_bitfufuos_am(self, user_suffix: str | None = None) -> dict:
+        if len(self.groups) > 0:
+            return self.groups[0].as_bitfufuos_am(user_suffix=user_suffix)
+        return PoolGroup().as_bitfufuos_am()
+
     def as_am_modern(self, user_suffix: str | None = None) -> dict:
         if len(self.groups) > 0:
             return {"pools": self.groups[0].as_am_modern(user_suffix=user_suffix)}
@@ -602,6 +631,15 @@ class PoolConfig(MinerConfigValue):
     def from_epic(cls, web_conf: dict) -> "PoolConfig":
         pool_data = web_conf["StratumConfigs"]
         return cls(groups=[PoolGroup.from_epic(pool_data)])
+
+    @classmethod
+    def from_bitfufuos_am(cls, web_conf: dict) -> "PoolConfig":
+        try:
+            pool_data = web_conf["pools"]
+        except KeyError:
+            return cls(groups=[])
+
+        return cls(groups=[PoolGroup.from_am_modern(pool_data)])
 
     @classmethod
     def from_am_modern(cls, web_conf: dict) -> "PoolConfig":

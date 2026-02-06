@@ -94,6 +94,15 @@ class MinerConfig(BaseModel):
             **self.temperature.as_am_old(),
         }
 
+    def as_bitfufuos_am(self, user_suffix: str | None = None) -> dict:
+        """Generates the configuration in the format suitable for Antminer with BitfufuOS"""
+        return {
+            **self.fan_mode.as_bitfufuos_am(),
+            **self.mining_mode.as_bitfufuos_am(),
+            **self.pools.as_bitfufuos_am(),
+            **self.temperature.as_bitfufuos_am(),
+        }
+
     def as_goldshell(self, user_suffix: str | None = None) -> dict:
         """Generates the configuration in the format suitable for Goldshell miners."""
         return {
@@ -209,6 +218,15 @@ class MinerConfig(BaseModel):
     def from_api(cls, api_pools: dict) -> "MinerConfig":
         """Constructs a MinerConfig object from API pool data."""
         return cls(pools=PoolConfig.from_api(api_pools))
+
+    @classmethod
+    def from_bitfufuos_am(cls, web_conf: dict) -> "MinerConfig":
+        """Constructs a MinerConfig object from web configuration for modern Antminers."""
+        return cls(
+            pools=PoolConfig.from_bitfufuos_am(web_conf),
+            mining_mode=MiningModeConfig.from_bitfufuos_am(web_conf),
+            fan_mode=FanModeConfig.from_bitfufuos_am(web_conf),
+        )
 
     @classmethod
     def from_am_modern(cls, web_conf: dict) -> "MinerConfig":
