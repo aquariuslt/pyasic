@@ -234,6 +234,9 @@ class BitfufuAntminerWebAPI(BaseWebAPI):
         """
         return await self.send_command("reboot")
 
+    async def get_autotune_presets(self) -> dict:
+        return await self.send_command("get_multi_option")
+
     async def get_miner_conf(self) -> dict:
         """Retrieve the miner configuration from the Antminer device.
 

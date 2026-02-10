@@ -220,11 +220,13 @@ class MinerConfig(BaseModel):
         return cls(pools=PoolConfig.from_api(api_pools))
 
     @classmethod
-    def from_bitfufuos_am(cls, web_conf: dict) -> "MinerConfig":
+    def from_bitfufuos_am(
+        cls, web_conf: dict, web_presets: dict | None
+    ) -> "MinerConfig":
         """Constructs a MinerConfig object from web configuration for modern Antminers."""
         return cls(
             pools=PoolConfig.from_bitfufuos_am(web_conf),
-            mining_mode=MiningModeConfig.from_bitfufuos_am(web_conf),
+            mining_mode=MiningModeConfig.from_bitfufuos_am(web_conf, web_presets),
             fan_mode=FanModeConfig.from_bitfufuos_am(web_conf),
         )
 

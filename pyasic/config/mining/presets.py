@@ -5,6 +5,7 @@ class MiningPreset(MinerConfigValue):
     name: str | None = None
     power: int | None = None
     hashrate: int | None = None
+    efficiency: float | None = None
     tuned: bool | None = None
     modded_psu: bool | None = None
     frequency: int | None = None
@@ -14,6 +15,37 @@ class MiningPreset(MinerConfigValue):
         if self.name is not None:
             return {"preset": self.name}
         return {}
+
+    def as_bitfufuos_am(self) -> dict:
+        return {"_ant_work_mode": "0", "_ant_multi_level": self.name}
+
+    @classmethod
+    def from_bitfufuos_am(cls, preset: str) -> "MiningPreset":
+        """
+        Constructs a MiningPreset object from bitfufuos am
+        >>> mp = MiningPreset.from_bitfufuos_am("J/T 20.0, Hashrate ~135TH/s")
+        >>> mp.hashrate
+        135000000000000
+        >>> mp.efficiency
+        20.0
+        >>> mp.tuned
+        True
+        >>> mp.name
+        'J/T 20.0, Hashrate ~135TH/s'
+        """
+        if "J/T" not in preset:
+            return cls(
+                name=preset,
+            )
+        name = preset
+        efficiency = float(preset.split(",")[0].strip().replace("J/T ", ""))
+        hashrate = int(preset.split("~")[1].strip().replace("TH/s", "")) * (1000**4)
+        return cls(
+            name=name,
+            efficiency=efficiency,
+            tuned=True,
+            hashrate=hashrate,
+        )
 
     @classmethod
     def from_vnish(cls, web_preset: dict):

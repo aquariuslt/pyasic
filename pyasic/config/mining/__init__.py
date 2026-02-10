@@ -437,6 +437,26 @@ class MiningModePreset(MinerConfigValue):
     active_preset: MiningPreset
     available_presets: list[MiningPreset] = field(default_factory=list)
 
+    def as_bitfufuos_am(self) -> dict:
+        return self.active_preset.as_bitfufuos_am()
+
+    @classmethod
+    def from_bitfufuos_am(
+        cls, current_preset: str, web_preset: dict | None
+    ) -> "MiningModePreset":
+        available_presets = []
+        if web_preset is not None:
+            mode_infos = web_preset.get("ModeInfo", [])
+            if len(mode_infos) > 0:
+                available_presets = [
+                    MiningPreset.from_bitfufuos_am(preset)
+                    for preset in mode_infos[0].get("Level", {}).values()
+                ]
+        return cls(
+            active_preset=MiningPreset.from_bitfufuos_am(current_preset),
+            available_presets=available_presets,
+        )
+
     def as_vnish(self) -> dict:
         return {"overclock": {**self.active_preset.as_vnish()}}
 
@@ -623,7 +643,7 @@ class MiningModeConfig(MinerConfigOption):
             return cls_attr().from_dict(dict_conf)
 
     @classmethod
-    def from_bitfufuos_am(cls, web_conf: dict):
+    def from_bitfufuos_am(cls, web_conf: dict, web_presets: dict | None):
         work_mode = None
         ex_hashrate_mode = None
 
@@ -640,10 +660,15 @@ class MiningModeConfig(MinerConfigOption):
         if int(work_mode) == 0:
             if ex_hashrate_mode is None:
                 return cls.normal()
-            if ex_hashrate_mode == "LPM":
-                return cls.low()
-            if ex_hashrate_mode == "SaleHashrate":
-                return cls.normal()
+            else:
+                if ex_hashrate_mode == "LPM":
+                    return cls.low()
+                if ex_hashrate_mode == "SaleHashrate":
+                    return cls.normal()
+                return MiningModePreset.from_bitfufuos_am(
+                    ex_hashrate_mode,
+                    web_presets,
+                )
         elif int(work_mode) == 1:
             return cls.sleep()
         elif int(work_mode) == 3:

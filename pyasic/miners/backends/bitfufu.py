@@ -120,9 +120,21 @@ class BitfufuMiner(BitfufuFirmware):
     supports_power_modes = False
 
     async def get_config(self) -> MinerConfig:
-        data = await self.web.get_miner_conf()
-        if data:
-            self.config = MinerConfig.from_bitfufuos_am(data)
+        conf_summary = None
+        autotune_presets = None
+        try:
+            conf_summary = await self.web.get_miner_conf()
+        except APIError:
+            pass
+        try:
+            autotune_presets = await self.web.get_autotune_presets()
+        except APIError:
+            pass
+        if conf_summary:
+            self.config = MinerConfig.from_bitfufuos_am(
+                conf_summary,
+                autotune_presets,
+            )
         return self.config
 
     async def send_config(self, config: MinerConfig, user_suffix: str = None) -> None:
