@@ -49,6 +49,9 @@ class PoolMetrics(BaseModel):
 
     accepted: Number of accepted shares.
     rejected: Number of rejected shares.
+    difficulty_accepted: Accepted share difficulty.
+    difficulty_rejected: Rejected share difficulty.
+    difficulty_stale: Stale share difficulty.
     get_failures: Number of failures in obtaining work from the pool.
     remote_failures: Number of failures communicating with the pool server.
     active: Indicates if the miner is connected to the stratum server.
@@ -63,6 +66,9 @@ class PoolMetrics(BaseModel):
     url: PoolUrl | None
     accepted: int | None = None
     rejected: int | None = None
+    difficulty_accepted: float | None = None
+    difficulty_rejected: float | None = None
+    difficulty_stale: float | None = None
     get_failures: int | None = None
     remote_failures: int | None = None
     active: bool | None = None
@@ -123,6 +129,9 @@ class PoolMetrics(BaseModel):
             "url",
             "accepted",
             "rejected",
+            "difficulty_accepted",
+            "difficulty_rejected",
+            "difficulty_stale",
             "active",
             "alive",
             "user",

@@ -549,6 +549,15 @@ class AntminerModern(BMMiner):
                         ),
                         accepted=pool_info.get("Accepted"),
                         rejected=pool_info.get("Rejected"),
+                        difficulty_accepted=pool_info.get(
+                            "Difficulty Accepted", pool_info.get("diffa")
+                        ),
+                        difficulty_rejected=pool_info.get(
+                            "Difficulty Rejected", pool_info.get("diffr")
+                        ),
+                        difficulty_stale=pool_info.get(
+                            "Difficulty Stale", pool_info.get("diffs")
+                        ),
                         get_failures=pool_info.get("Get Failures"),
                         remote_failures=pool_info.get("Remote Failures"),
                         active=pool_info.get("Stratum Active"),
