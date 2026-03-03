@@ -10,6 +10,7 @@ class Scheme(Enum):
     STRATUM_V1 = "stratum+tcp"
     STRATUM_V2 = "stratum2+tcp"
     STRATUM_V1_SSL = "stratum+ssl"
+    STRATUM_V1_TLS = "stratum+tls"
 
 
 class PoolUrl(BaseModel):
@@ -33,8 +34,12 @@ class PoolUrl(BaseModel):
         parsed_url = urlparse(url)
         if not parsed_url.hostname:
             return None
-        if not parsed_url.scheme.strip() == "":
-            scheme = Scheme(parsed_url.scheme)
+        parsed_scheme = parsed_url.scheme.strip().lower()
+        if parsed_scheme:
+            try:
+                scheme = Scheme(parsed_scheme)
+            except ValueError:
+                return None
         else:
             scheme = Scheme.STRATUM_V1
         host = parsed_url.hostname

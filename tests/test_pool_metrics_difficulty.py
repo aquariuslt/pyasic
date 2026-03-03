@@ -1,7 +1,7 @@
 import asyncio
 
 from pyasic.miners.backends.antminer import AntminerModern
-from pyasic.data.pools import PoolMetrics
+from pyasic.data.pools import PoolMetrics, PoolUrl, Scheme
 
 
 def test_pool_metrics_uses_snake_case_difficulty_keys():
@@ -78,3 +78,18 @@ def test_antminer_pool_difficulty_from_title_case_keys():
     assert pool.difficulty_accepted == 1048576.0
     assert pool.difficulty_rejected == 262144.0
     assert pool.difficulty_stale == 0.0
+
+
+def test_pool_url_supports_stratum_tls_scheme():
+    parsed = PoolUrl.from_str("stratum+tls://ssl.antpool.com:3333")
+
+    assert parsed is not None
+    assert parsed.scheme == Scheme.STRATUM_V1_TLS
+    assert parsed.host == "ssl.antpool.com"
+    assert parsed.port == 3333
+
+
+def test_pool_url_unknown_scheme_returns_none():
+    parsed = PoolUrl.from_str("stratum+foo://ssl.antpool.com:3333")
+
+    assert parsed is None

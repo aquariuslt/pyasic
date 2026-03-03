@@ -250,3 +250,12 @@ class S19XPHydro(AntMinerMake):
     expected_fans = 0
     expected_hashboards = 3
     algo = MinerAlgo.SHA256
+
+
+class S19XPPlusHydro(AntMinerMake):
+    raw_model = MinerModel.ANTMINER.S19XPPlusHydro
+
+    expected_chips = 180
+    expected_fans = 4
+    expected_hashboards = 3
+    algo = MinerAlgo.SHA256
