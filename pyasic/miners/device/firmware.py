@@ -22,6 +22,10 @@ class StockFirmware(BaseMiner):
     firmware = MinerFirmware.STOCK
 
 
+class HashMasterFirmware(BaseMiner):
+    firmware = MinerFirmware.HASHMASTER
+
+
 class BraiinsOSFirmware(BaseMiner):
     firmware = MinerFirmware.BRAIINS_OS
 

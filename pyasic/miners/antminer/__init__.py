@@ -18,6 +18,7 @@ from .bmminer import *
 from .bosminer import *
 from .cgminer import *
 from .epic import *
+from .hashmaster import *
 from .hiveon import *
 from .luxos import *
 from .marathon import *

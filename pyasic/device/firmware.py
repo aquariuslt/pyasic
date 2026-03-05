@@ -19,6 +19,7 @@ from enum import Enum
 
 class MinerFirmware(str, Enum):
     STOCK = "Stock"
+    HASHMASTER = "HashMaster"
     BRAIINS_OS = "BOS+"
     VNISH = "VNish"
     EPIC = "ePIC"

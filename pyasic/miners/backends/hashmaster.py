@@ -1,18 +1,3 @@
-# ------------------------------------------------------------------------------
-#  Copyright 2022 Upstream Data Inc                                            -
-#                                                                              -
-#  Licensed under the Apache License, Version 2.0 (the "License");             -
-#  you may not use this file except in compliance with the License.            -
-#  You may obtain a copy of the License at                                     -
-#                                                                              -
-#      http://www.apache.org/licenses/LICENSE-2.0                              -
-#                                                                              -
-#  Unless required by applicable law or agreed to in writing, software         -
-#  distributed under the License is distributed on an "AS IS" BASIS,           -
-#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.    -
-#  See the License for the specific language governing permissions and         -
-#  limitations under the License.                                              -
-# ------------------------------------------------------------------------------
 import logging
 from datetime import datetime
 from typing import List, Optional
@@ -31,12 +16,12 @@ from pyasic.miners.data import (
     RPCAPICommand,
     WebAPICommand,
 )
-from pyasic.miners.device.firmware import BitfufuFirmware
+from pyasic.miners.device.firmware import HashMasterFirmware
 from pyasic.rpc.antminer import AntminerRPCAPI
-from pyasic.web.bitfufu import BitfufuAntminerWebAPI
+from pyasic.web.hashmaster import HashMasterAntminerWebAPI
 
 
-BITFUFU_ANTMINER_DATA_LOC = DataLocations(
+HASHMASTER_ANTMINER_DATA_LOC = DataLocations(
     **{
         str(DataOptions.MAC): DataFunction(
             "_get_mac",
@@ -102,11 +87,11 @@ BITFUFU_ANTMINER_DATA_LOC = DataLocations(
 )
 
 
-class BitfufuMiner(BitfufuFirmware):
-    """Handler for AntMiners with the modern web interface, such as S19"""
+class HashMasterMiner(HashMasterFirmware):
+    """Handler for AntMiners with the HashMaster web interface, such as S19"""
 
-    _web_cls = BitfufuAntminerWebAPI
-    web: BitfufuAntminerWebAPI
+    _web_cls = HashMasterAntminerWebAPI
+    web: HashMasterAntminerWebAPI
 
     _rpc_cls = AntminerRPCAPI
     rpc: AntminerRPCAPI
@@ -114,7 +99,7 @@ class BitfufuMiner(BitfufuFirmware):
     _ssh_cls = AntminerModernSSH
     ssh: AntminerModernSSH
 
-    data_locations = BITFUFU_ANTMINER_DATA_LOC
+    data_locations = HASHMASTER_ANTMINER_DATA_LOC
 
     supports_shutdown = False
     supports_power_modes = False
@@ -188,6 +173,75 @@ class BitfufuMiner(BitfufuFirmware):
             except (LookupError, ValueError, TypeError):
                 pass
 
+    async def _get_hashboards(self) -> List[HashBoard]:
+        if self.expected_hashboards is None:
+            return []
+
+        hashboards = [
+            HashBoard(slot=idx, expected_chips=self.expected_chips)
+            for idx in range(self.expected_hashboards)
+        ]
+
+        try:
+            rpc_stats = await self.rpc.stats(new_api=True)
+        except APIError:
+            return hashboards
+
+        if rpc_stats is not None:
+            try:
+                for board in rpc_stats["STATS"][0]["chain"]:
+                    hashboards[board["index"]].hashrate = self.algo.hashrate(
+                        rate=board["rate_real"], unit=self.algo.unit.GH
+                    ).into(self.algo.unit.default)
+                    hashboards[board["index"]].chips = board["asic_num"]
+
+                    if "Hyd" in self.model:
+                        hashboards[board["index"]].inlet_temp = board["temp_pcb"][0]
+                        hashboards[board["index"]].outlet_temp = board["temp_pcb"][2]
+                        hashboards[board["index"]].chip_temp = board["temp_pic"][0]
+                        board_temp_data = list(
+                            filter(
+                                lambda x: not x == 0,
+                                [
+                                    board["temp_pic"][1],
+                                    board["temp_pic"][2],
+                                    board["temp_pic"][3],
+                                    board["temp_pcb"][1],
+                                    board["temp_pcb"][3],
+                                ],
+                            )
+                        )
+                        hashboards[board["index"]].temp = (
+                            sum(board_temp_data) / len(board_temp_data)
+                            if len(board_temp_data) > 0
+                            else 0
+                        )
+
+                    else:
+                        board_temp_data = list(
+                            filter(lambda x: not x == 0, board["temp_pcb"])
+                        )
+                        hashboards[board["index"]].temp = (
+                            sum(board_temp_data) / len(board_temp_data)
+                            if len(board_temp_data) > 0
+                            else 0
+                        )
+                        chip_temp_data = list(
+                            filter(lambda x: not x == 0, board["temp_chip"])
+                        )
+                        hashboards[board["index"]].chip_temp = (
+                            sum(chip_temp_data) / len(chip_temp_data)
+                            if len(chip_temp_data) > 0
+                            else 0
+                        )
+
+                    hashboards[board["index"]].serial_number = board["sn"]
+                    hashboards[board["index"]].missing = False
+                    hashboards[board["index"]].chip_frequency = board["freq_avg"]
+            except LookupError:
+                pass
+        return hashboards
+
     async def _get_fans(self, rpc_stats: dict = None) -> List[Fan]:
         if self.expected_fans is None:
             return []
@@ -220,10 +274,7 @@ class BitfufuMiner(BitfufuFirmware):
 
         return fans
 
-    async def _get_expected_hashrate(
-        self, rpc_stats: dict = None
-    ) -> Optional[AlgoHashRate]:
-        # X19 method, not sure compatibility
+    async def _get_uptime(self, rpc_stats: dict = None) -> Optional[int]:
         if rpc_stats is None:
             try:
                 rpc_stats = await self.rpc.stats()
@@ -232,46 +283,9 @@ class BitfufuMiner(BitfufuFirmware):
 
         if rpc_stats is not None:
             try:
-                expected_rate = rpc_stats["STATS"][1]["total_rateideal"]
-                try:
-                    rate_unit = rpc_stats["STATS"][1]["rate_unit"]
-                except KeyError:
-                    rate_unit = "GH"
-                return self.algo.hashrate(
-                    rate=float(expected_rate), unit=self.algo.unit.from_str(rate_unit)
-                ).into(self.algo.unit.default)
+                return int(rpc_stats["STATS"][1]["Elapsed"])
             except LookupError:
                 pass
-
-    async def _get_pools(self, rpc_pools: dict = None) -> List[PoolMetrics]:
-        if rpc_pools is None:
-            try:
-                rpc_pools = await self.rpc.pools()
-            except APIError:
-                pass
-
-        pools_data = []
-        if rpc_pools is not None:
-            try:
-                pools = rpc_pools.get("POOLS", [])
-                for pool_info in pools:
-                    url = pool_info.get("URL")
-                    pool_url = PoolUrl.from_str(url) if url else None
-                    pool_data = PoolMetrics(
-                        accepted=pool_info.get("Accepted"),
-                        rejected=pool_info.get("Rejected"),
-                        get_failures=pool_info.get("Get Failures"),
-                        remote_failures=pool_info.get("Remote Failures"),
-                        active=pool_info.get("Stratum Active"),
-                        alive=pool_info.get("Status") == "Alive",
-                        url=pool_url,
-                        user=pool_info.get("User"),
-                        index=pool_info.get("POOL"),
-                    )
-                    pools_data.append(pool_data)
-            except LookupError:
-                pass
-        return pools_data
 
     async def _get_serial_number(
         self, web_get_system_info: dict = None
@@ -391,75 +405,6 @@ class BitfufuMiner(BitfufuFirmware):
                 pass
         return errors
 
-    async def _get_hashboards(self) -> List[HashBoard]:
-        if self.expected_hashboards is None:
-            return []
-
-        hashboards = [
-            HashBoard(slot=idx, expected_chips=self.expected_chips)
-            for idx in range(self.expected_hashboards)
-        ]
-
-        try:
-            rpc_stats = await self.rpc.stats(new_api=True)
-        except APIError:
-            return hashboards
-
-        if rpc_stats is not None:
-            try:
-                for board in rpc_stats["STATS"][0]["chain"]:
-                    hashboards[board["index"]].hashrate = self.algo.hashrate(
-                        rate=board["rate_real"], unit=self.algo.unit.GH
-                    ).into(self.algo.unit.default)
-                    hashboards[board["index"]].chips = board["asic_num"]
-
-                    if "Hyd" in self.model:
-                        hashboards[board["index"]].inlet_temp = board["temp_pcb"][0]
-                        hashboards[board["index"]].outlet_temp = board["temp_pcb"][2]
-                        hashboards[board["index"]].chip_temp = board["temp_pic"][0]
-                        board_temp_data = list(
-                            filter(
-                                lambda x: not x == 0,
-                                [
-                                    board["temp_pic"][1],
-                                    board["temp_pic"][2],
-                                    board["temp_pic"][3],
-                                    board["temp_pcb"][1],
-                                    board["temp_pcb"][3],
-                                ],
-                            )
-                        )
-                        hashboards[board["index"]].temp = (
-                            sum(board_temp_data) / len(board_temp_data)
-                            if len(board_temp_data) > 0
-                            else 0
-                        )
-
-                    else:
-                        board_temp_data = list(
-                            filter(lambda x: not x == 0, board["temp_pcb"])
-                        )
-                        hashboards[board["index"]].temp = (
-                            sum(board_temp_data) / len(board_temp_data)
-                            if len(board_temp_data) > 0
-                            else 0
-                        )
-                        chip_temp_data = list(
-                            filter(lambda x: not x == 0, board["temp_chip"])
-                        )
-                        hashboards[board["index"]].chip_temp = (
-                            sum(chip_temp_data) / len(chip_temp_data)
-                            if len(chip_temp_data) > 0
-                            else 0
-                        )
-
-                    hashboards[board["index"]].serial_number = board["sn"]
-                    hashboards[board["index"]].missing = False
-                    hashboards[board["index"]].chip_frequency = board["freq_avg"]
-            except LookupError:
-                pass
-        return hashboards
-
     async def _get_fault_light(
         self, web_get_blink_status: dict = None
     ) -> Optional[bool]:
@@ -478,6 +423,28 @@ class BitfufuMiner(BitfufuFirmware):
             except KeyError:
                 pass
         return self.light
+
+    async def _get_expected_hashrate(
+        self, rpc_stats: dict = None
+    ) -> Optional[AlgoHashRate]:
+        if rpc_stats is None:
+            try:
+                rpc_stats = await self.rpc.stats()
+            except APIError:
+                pass
+
+        if rpc_stats is not None:
+            try:
+                expected_rate = rpc_stats["STATS"][1]["total_rateideal"]
+                try:
+                    rate_unit = rpc_stats["STATS"][1]["rate_unit"]
+                except KeyError:
+                    rate_unit = "GH"
+                return self.algo.hashrate(
+                    rate=float(expected_rate), unit=self.algo.unit.from_str(rate_unit)
+                ).into(self.algo.unit.default)
+            except LookupError:
+                pass
 
     async def set_static_ip(
         self,
@@ -546,19 +513,6 @@ class BitfufuMiner(BitfufuFirmware):
             except LookupError:
                 pass
 
-    async def _get_uptime(self, rpc_stats: dict = None) -> Optional[int]:
-        if rpc_stats is None:
-            try:
-                rpc_stats = await self.rpc.stats()
-            except APIError:
-                pass
-
-        if rpc_stats is not None:
-            try:
-                return int(rpc_stats["STATS"][1]["Elapsed"])
-            except LookupError:
-                pass
-
     @staticmethod
     def _parse_last_share_to_timestamp(last_share_time: str) -> int:
         """
@@ -578,3 +532,36 @@ class BitfufuMiner(BitfufuFirmware):
             except ValueError:
                 logging.debug(f"Failed to parse last share time: {last_share_time}")
         return 0
+
+    async def _get_pools(self, rpc_pools: dict = None) -> List[PoolMetrics]:
+        if rpc_pools is None:
+            try:
+                rpc_pools = await self.rpc.pools()
+            except APIError:
+                pass
+
+        pools_data = []
+        if rpc_pools is not None:
+            try:
+                pools = rpc_pools.get("POOLS", [])
+                for pool_info in pools:
+                    url = pool_info.get("URL")
+                    pool_url = PoolUrl.from_str(url) if url else None
+                    pool_data = PoolMetrics(
+                        last_share_ts=self._parse_last_share_to_timestamp(
+                            pool_info.get("Last Share Time", "0")
+                        ),
+                        accepted=pool_info.get("Accepted"),
+                        rejected=pool_info.get("Rejected"),
+                        get_failures=pool_info.get("Get Failures"),
+                        remote_failures=pool_info.get("Remote Failures"),
+                        active=pool_info.get("Stratum Active"),
+                        alive=pool_info.get("Status") == "Alive",
+                        url=pool_url,
+                        user=pool_info.get("User"),
+                        index=pool_info.get("POOL"),
+                    )
+                    pools_data.append(pool_data)
+            except LookupError:
+                pass
+        return pools_data

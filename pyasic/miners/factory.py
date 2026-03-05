@@ -99,6 +99,10 @@ class BitfufuUnknown(BitfufuMiner, AntMinerMake):
     pass
 
 
+class HashMasterUnknown(HashMasterMiner, AntMinerMake):
+    pass
+
+
 class MinerTypes(enum.Enum):
     ANTMINER = 0
     WHATSMINER = 1
@@ -120,6 +124,7 @@ class MinerTypes(enum.Enum):
     ELPHAPEX = 17
     MSKMINER = 18
     BITFUFU = 19
+    HASHMASTER = 20
 
 
 MINER_CLASSES = {
@@ -178,6 +183,7 @@ MINER_CLASSES = {
         "ANTMINER BHB68601": BMMinerS21,  # ???
         "ANTMINER BHB68606": BMMinerS21,  # ???
         "ANTMINER S21+": BMMinerS21Plus,
+        "ANTMINER S21+ HYD": BMMinerS21PlusHydro,
         "ANTMINER S21+ HYD.": BMMinerS21PlusHydro,
         "ANTMINER S21 PRO": BMMinerS21Pro,
         "ANTMINER S21E HYD.": BMMinerS21EHydro,
@@ -765,6 +771,13 @@ MINER_CLASSES = {
         None: BitfufuUnknown,
         "ANTMINER S19 XP EX": BitfufuS19XPEx,
     },
+    MinerTypes.HASHMASTER: {
+        None: HashMasterUnknown,
+        "ANTMINER S21 HYD (HASHMASTER)": HashMasterS21Hydro,
+        "ANTMINER S21E HYD (HASHMASTER)": HashMasterS21EHydro,
+        "ANTMINER S21+ HYD (HASHMASTER)": HashMasterS21PlusHydro,
+        "ANTMINER S19 XP+ HYD (HASHMASTER)": HashMasterS19XPPlusHydro,
+    },
 }
 
 
@@ -848,6 +861,7 @@ class MinerFactory:
                 MinerTypes.VOLCMINER: self.get_miner_model_volcminer,
                 MinerTypes.ELPHAPEX: self.get_miner_model_elphapex,
                 MinerTypes.BITFUFU: self.get_miner_model_bitfufu,
+                MinerTypes.HASHMASTER: self.get_miner_model_hash_master,
             }
             fn = miner_model_fns.get(miner_type)
 
@@ -896,13 +910,18 @@ class MinerFactory:
                     res = await self.send_web_command(ip, "/kaonsu/v1/brief", auth=auth)
                     if res is not None:
                         mtype = MinerTypes.MARATHON
-                    # could still be bitfufu
+                        return mtype
+
                     res = await self.send_web_command(
                         ip, "/cgi-bin/get_system_info.cgi", auth=auth
                     )
                     if res is not None:
+                        # could still be bitfufu
                         if "ant_hwv" in res:
                             mtype = MinerTypes.BITFUFU
+                        # could still be hashmaster
+                        elif "HASHMASTER" in str(res).upper():
+                            mtype = MinerTypes.HASHMASTER
                 if mtype == MinerTypes.HAMMER:
                     res = await self.get_miner_model_hammer(ip)
                     if res is None:
@@ -1051,6 +1070,8 @@ class MinerFactory:
             return MinerTypes.MARATHON
         if "RWGLR" in upper_data:
             return MinerTypes.MSKMINER
+        if "HASHMASTER" in upper_data:
+            return MinerTypes.HASHMASTER
         if "ANTMINER" in upper_data and "DEVDETAILS" not in upper_data:
             json_str = upper_data.replace("\x00", "")
             try:
@@ -1211,10 +1232,49 @@ class MinerFactory:
                 return MINER_CLASSES[miner_type][None](ip)
             return UnknownMiner(str(ip))
 
+    async def get_miner_model_hash_master(self, ip: str) -> str | None:
+        tasks = [
+            asyncio.create_task(self._get_model_hash_master_web(ip)),
+            asyncio.create_task(self._get_model_hash_master_sock(ip)),
+        ]
+
+        return await concurrent_get_first_result(tasks, lambda x: x is not None)
+
+    async def _get_model_hash_master_web(self, ip: str) -> str | None:
+        # last resort, this is slow
+        auth = httpx.DigestAuth(
+            "root", settings.get("default_antminer_web_password", "root")
+        )
+        web_json_data = await self.send_web_command(
+            ip, "/cgi-bin/get_system_info.cgi", auth=auth
+        )
+
+        try:
+            miner_model = web_json_data["minertype"]
+
+            return miner_model
+        except (TypeError, LookupError):
+            pass
+
+    async def _get_model_hash_master_sock(self, ip: str) -> str | None:
+        sock_json_data = await self.send_api_command(ip, "version")
+        try:
+            miner_model = sock_json_data["VERSION"][0]["Type"]
+            return miner_model
+        except (TypeError, LookupError):
+            pass
+
+        sock_json_data = await self.send_api_command(ip, "stats")
+        try:
+            miner_model = sock_json_data["STATS"][0]["Type"]
+            return miner_model
+        except (TypeError, LookupError):
+            pass
+
     async def get_miner_model_bitfufu(self, ip: str) -> MinerTypes | None:
         tasks = [
-            asyncio.create_task(self._get_model_antminer_web(ip)),
-            asyncio.create_task(self._get_model_antminer_sock(ip)),
+            asyncio.create_task(self._get_model_bitfufu_web(ip)),
+            asyncio.create_task(self._get_model_bitfufu_sock(ip)),
         ]
 
         return await concurrent_get_first_result(tasks, lambda x: x is not None)
@@ -1268,34 +1328,20 @@ class MinerFactory:
         )
 
         try:
-            miner_model = web_json_data["minertype"]
-
-            return miner_model
+            return web_json_data["minertype"]
         except (TypeError, LookupError):
             pass
 
     async def _get_model_antminer_sock(self, ip: str) -> str | None:
         sock_json_data = await self.send_api_command(ip, "version")
         try:
-            miner_model = sock_json_data["VERSION"][0]["Type"]
-
-            if " (" in miner_model:
-                split_miner_model = miner_model.split(" (")
-                miner_model = split_miner_model[0]
-
-            return miner_model
+            return sock_json_data["VERSION"][0]["Type"]
         except (TypeError, LookupError):
             pass
 
         sock_json_data = await self.send_api_command(ip, "stats")
         try:
-            miner_model = sock_json_data["STATS"][0]["Type"]
-
-            if " (" in miner_model:
-                split_miner_model = miner_model.split(" (")
-                miner_model = split_miner_model[0]
-
-            return miner_model
+            return sock_json_data["STATS"][0]["Type"]
         except (TypeError, LookupError):
             pass
 
