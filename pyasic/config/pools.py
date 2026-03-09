@@ -43,6 +43,13 @@ class Pool(MinerConfigValue):
             f"_ant_pool{idx}pw": self.password,
         }
 
+    def as_hashmaster_am(self, user_suffix: str | None = None) -> dict:
+        return {
+            "url": self.url,
+            "user": f"{self.user}{user_suffix or ''}",
+            "pass": self.password,
+        }
+
     def as_am_modern(self, user_suffix: str | None = None) -> dict:
         return {
             "url": self.url,
@@ -271,6 +278,17 @@ class PoolGroup(MinerConfigValue):
                 pools.update(
                     **Pool(url="", user="", password="").as_bitfufuos_am(idx=idx + 1)
                 )
+            idx += 1
+        return pools
+
+    def as_hashmaster_am(self, user_suffix: str | None = None) -> list:
+        pools = []
+        idx = 0
+        while idx < 3:
+            if len(self.pools) > idx:
+                pools.append(self.pools[idx].as_hashmaster_am(user_suffix=user_suffix))
+            else:
+                pools.append(Pool(url="", user="", password="").as_hashmaster_am())
             idx += 1
         return pools
 
@@ -522,6 +540,11 @@ class PoolConfig(MinerConfigValue):
             return self.groups[0].as_bitfufuos_am(user_suffix=user_suffix)
         return PoolGroup().as_bitfufuos_am()
 
+    def as_hashmaster_am(self, user_suffix: str | None = None) -> dict:
+        if len(self.groups) > 0:
+            return {"pools": self.groups[0].as_hashmaster_am(user_suffix=user_suffix)}
+        return {"pools": PoolGroup().as_hashmaster_am()}
+
     def as_am_modern(self, user_suffix: str | None = None) -> dict:
         if len(self.groups) > 0:
             return {"pools": self.groups[0].as_am_modern(user_suffix=user_suffix)}
@@ -634,6 +657,15 @@ class PoolConfig(MinerConfigValue):
 
     @classmethod
     def from_bitfufuos_am(cls, web_conf: dict) -> "PoolConfig":
+        try:
+            pool_data = web_conf["pools"]
+        except KeyError:
+            return cls(groups=[])
+
+        return cls(groups=[PoolGroup.from_am_modern(pool_data)])
+
+    @classmethod
+    def from_hashmaster_am(cls, web_conf: dict) -> "PoolConfig":
         try:
             pool_data = web_conf["pools"]
         except KeyError:

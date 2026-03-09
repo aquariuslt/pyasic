@@ -19,6 +19,15 @@ class MiningPreset(MinerConfigValue):
     def as_bitfufuos_am(self) -> dict:
         return {"_ant_work_mode": "0", "_ant_multi_level": self.name}
 
+    def as_hashmaster_am(self) -> dict:
+        option_value = str(self.name) if self.name is not None else None
+        if option_value is not None:
+            option_value = option_value.removesuffix("W")
+        return {
+            "miner-mode": "0",
+            "ex-hashrate": option_value,
+        }
+
     @classmethod
     def from_bitfufuos_am(cls, preset: str) -> "MiningPreset":
         """
@@ -46,6 +55,15 @@ class MiningPreset(MinerConfigValue):
             tuned=True,
             hashrate=hashrate,
         )
+
+    @classmethod
+    def from_hashmaster_am(cls, preset: str) -> "MiningPreset":
+        if not preset.isdigit():
+            return cls(
+                name=preset,
+            )
+        name = preset + "W"
+        return cls(name=name, tuned=True, power=int(preset))
 
     @classmethod
     def from_vnish(cls, web_preset: dict):

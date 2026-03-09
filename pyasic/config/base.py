@@ -73,6 +73,9 @@ class MinerConfigOption(Enum):
     def as_elphapex(self) -> dict:
         return self.value.as_elphapex()
 
+    def as_hashmaster_am(self) -> dict:
+        return self.value.as_hashmaster_am()
+
     def __call__(self, *args, **kwargs):
         return self.value(*args, **kwargs)
 
@@ -96,6 +99,9 @@ class MinerConfigValue(BaseModel):
         return self.model_dump()
 
     def as_bitfufuos_am(self) -> dict:
+        return {}
+
+    def as_hashmaster_am(self) -> dict:
         return {}
 
     def as_am_modern(self) -> dict:

@@ -52,6 +52,9 @@ class MiningModeNormal(MinerConfigValue):
             return {"_ant_work_mode": "0", "_ant_multi_level": "SaleHashrate"}
         return {"_ant_work_mode": 0, "_ant_multi_level": "SaleHashrate"}
 
+    def as_hashmaster_am(self) -> dict:
+        return {"miner-mode": "0", "ex-hashrate": "NPM"}
+
     def as_am_modern(self) -> dict:
         if settings.get("antminer_mining_mode_as_str", False):
             return {"miner-mode": "0"}
@@ -103,6 +106,9 @@ class MiningModeSleep(MinerConfigValue):
             return {"_ant_work_mode": "1"}
         return {"_ant_work_mode": 1}
 
+    def as_hashmaster_am(self) -> dict:
+        return {"miner-mode": "1"}
+
     def as_am_modern(self) -> dict:
         if settings.get("antminer_mining_mode_as_str", False):
             return {"miner-mode": "1"}
@@ -148,6 +154,9 @@ class MiningModeLPM(MinerConfigValue):
             return {"_ant_work_mode": "0", "_ant_multi_level": "LPM"}
         return {"miner-mode": 0, "_ant_multi_level": "LPM"}
 
+    def as_hashmaster_am(self) -> dict:
+        return {"miner-mode": "0"}
+
     def as_am_modern(self) -> dict:
         if settings.get("antminer_mining_mode_as_str", False):
             return {"miner-mode": "3"}
@@ -182,6 +191,9 @@ class MiningModeHPM(MinerConfigValue):
         if settings.get("antminer_mining_mode_as_str", False):
             return {"miner-mode": "0"}
         return {"miner-mode": 0}
+
+    def as_hashmaster_am(self) -> dict:
+        return {"miner-mode": "0"}
 
     def as_am_modern(self) -> dict:
         if settings.get("antminer_mining_mode_as_str", False):
@@ -228,6 +240,9 @@ class MiningModePowerTune(MinerConfigValue):
         if settings.get("antminer_mining_mode_as_str", False):
             return {"_ant_work_mode": "0"}
         return {"_ant_work_mode": 0}
+
+    def as_hashmaster_am(self) -> dict:
+        return {"miner-mode": "0"}
 
     def as_am_modern(self) -> dict:
         if settings.get("antminer_mining_mode_as_str", False):
@@ -341,6 +356,9 @@ class MiningModeHashrateTune(MinerConfigValue):
             return {"_ant_work_mode": "0"}
         return {"_ant_work_mode": 0}
 
+    def as_hashmaster_am(self) -> dict:
+        return {"miner-mode": "0"}
+
     def as_am_modern(self) -> dict:
         if settings.get("antminer_mining_mode_as_str", False):
             return {"miner-mode": "0"}
@@ -440,6 +458,9 @@ class MiningModePreset(MinerConfigValue):
     def as_bitfufuos_am(self) -> dict:
         return self.active_preset.as_bitfufuos_am()
 
+    def as_hashmaster_am(self) -> dict:
+        return self.active_preset.as_hashmaster_am()
+
     @classmethod
     def from_bitfufuos_am(
         cls, current_preset: str, web_preset: dict | None
@@ -454,6 +475,23 @@ class MiningModePreset(MinerConfigValue):
                 ]
         return cls(
             active_preset=MiningPreset.from_bitfufuos_am(current_preset),
+            available_presets=available_presets,
+        )
+
+    @classmethod
+    def from_hashmaster_am(
+        cls, current_preset: str, web_preset: dict | None
+    ) -> "MiningModePreset":
+        available_presets = []
+        if web_preset is not None:
+            mode_infos = web_preset.get("ModeInfo", [])
+            if len(mode_infos) > 0:
+                available_presets = [
+                    MiningPreset.from_hashmaster_am(preset)
+                    for preset in mode_infos[0].get("Level", {}).values()
+                ]
+        return cls(
+            active_preset=MiningPreset.from_hashmaster_am(current_preset),
             available_presets=available_presets,
         )
 
@@ -514,6 +552,9 @@ class ManualBoardSettings(MinerConfigValue):
             return {"_ant_work_mode": "0"}
         return {"_ant_work_mode": 0}
 
+    def as_hashmaster_am(self) -> dict:
+        return {"miner-mode": "0"}
+
     def as_am_modern(self) -> dict:
         if settings.get("antminer_mining_mode_as_str", False):
             return {"miner-mode": "0"}
@@ -550,6 +591,9 @@ class MiningModeManual(MinerConfigValue):
         if settings.get("antminer_mining_mode_as_str", False):
             return {"_ant_work_mode": "0"}
         return {"_ant_work_mode": 0}
+
+    def as_hashmaster_am(self) -> dict:
+        return {"miner-mode": "0"}
 
     def as_am_modern(self) -> dict:
         if settings.get("antminer_mining_mode_as_str", False):
@@ -657,7 +701,7 @@ class MiningModeConfig(MinerConfigOption):
                 work_mode = int(work_mode)
         if work_mode is None:
             return cls.default()
-        if int(work_mode) == 0:
+        if work_mode == 0:
             if ex_hashrate_mode is None:
                 return cls.normal()
             else:
@@ -669,9 +713,40 @@ class MiningModeConfig(MinerConfigOption):
                     ex_hashrate_mode,
                     web_presets,
                 )
-        elif int(work_mode) == 1:
+        elif work_mode == 1:
             return cls.sleep()
-        elif int(work_mode) == 3:
+        elif work_mode == 3:
+            return cls.low()
+        return cls.default()
+
+    @classmethod
+    def from_hashmaster_am(cls, web_conf: dict, web_presets: dict | None):
+        work_mode = None
+        ex_hashrate_mode = None
+
+        if web_conf.get("bitmain-ex-hashrate") is not None:
+            ex_hashrate_mode = web_conf.get("bitmain-ex-hashrate")
+        if web_conf.get("bitmain-work-mode") is not None:
+            work_mode = web_conf["bitmain-work-mode"]
+            if work_mode == "":
+                work_mode = None
+            else:
+                work_mode = int(work_mode)
+        if work_mode is None:
+            return cls.default()
+        if work_mode == 0:
+            if ex_hashrate_mode is None:
+                return cls.normal()
+            else:
+                if ex_hashrate_mode == "NPM":
+                    return cls.normal()
+                return MiningModePreset.from_hashmaster_am(
+                    ex_hashrate_mode,
+                    web_presets,
+                )
+        elif work_mode == 1:
+            return cls.sleep()
+        elif work_mode == 3:
             return cls.low()
         return cls.default()
 

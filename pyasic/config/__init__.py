@@ -103,6 +103,15 @@ class MinerConfig(BaseModel):
             **self.temperature.as_bitfufuos_am(),
         }
 
+    def as_hashmaster_am(self, user_suffix: str | None = None) -> dict:
+        """Generates the configuration in the format suitable for Antminer with HashMaster."""
+        return {
+            **self.fan_mode.as_hashmaster_am(),
+            **self.mining_mode.as_hashmaster_am(),
+            **self.pools.as_hashmaster_am(),
+            **self.temperature.as_hashmaster_am(),
+        }
+
     def as_goldshell(self, user_suffix: str | None = None) -> dict:
         """Generates the configuration in the format suitable for Goldshell miners."""
         return {
@@ -228,6 +237,17 @@ class MinerConfig(BaseModel):
             pools=PoolConfig.from_bitfufuos_am(web_conf),
             mining_mode=MiningModeConfig.from_bitfufuos_am(web_conf, web_presets),
             fan_mode=FanModeConfig.from_bitfufuos_am(web_conf),
+        )
+
+    @classmethod
+    def from_hashmaster_am(
+        cls, web_conf: dict, web_presets: dict | None
+    ) -> "MinerConfig":
+        """Constructs a MinerConfig object from web configuration for HashMaster Antminers."""
+        return cls(
+            pools=PoolConfig.from_hashmaster_am(web_conf),
+            mining_mode=MiningModeConfig.from_hashmaster_am(web_conf, web_presets),
+            fan_mode=FanModeConfig.from_hashmaster_am(web_conf),
         )
 
     @classmethod

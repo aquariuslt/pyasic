@@ -116,7 +116,7 @@ class HashMasterMiner(HashMasterFirmware):
         except APIError:
             pass
         if conf_summary:
-            self.config = MinerConfig.from_bitfufuos_am(
+            self.config = MinerConfig.from_hashmaster_am(
                 conf_summary,
                 autotune_presets,
             )
@@ -124,7 +124,7 @@ class HashMasterMiner(HashMasterFirmware):
 
     async def send_config(self, config: MinerConfig, user_suffix: str = None) -> None:
         self.config = config
-        await self.web.set_miner_conf(config.as_bitfufuos_am(user_suffix=user_suffix))
+        await self.web.set_miner_conf(config.as_hashmaster_am(user_suffix=user_suffix))
 
     async def _get_api_ver(self, rpc_version: dict = None) -> Optional[str]:
         if rpc_version is None:
