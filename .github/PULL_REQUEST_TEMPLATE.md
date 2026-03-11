@@ -1,14 +1,5 @@
 # Chang Information
 
-## Type Of Changes
-
-<!-- Select change types and remove unused -->
-
-- [ ] bugfix
-- [ ] feature
-- [ ] enhancement
-- [ ] other
-
 ## Changes
 
 <!-- Replace this text with a brief description of the changes you are making in this pull request. -->
