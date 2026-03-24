@@ -182,6 +182,7 @@ MINER_CLASSES = {
         "ANTMINER S21": BMMinerS21,
         "ANTMINER BHB68601": BMMinerS21,  # ???
         "ANTMINER BHB68606": BMMinerS21,  # ???
+        "ANTMINER S21 XP": BMMinerS21XP,
         "ANTMINER S21+": BMMinerS21Plus,
         "ANTMINER S21+ HYD": BMMinerS21PlusHydro,
         "ANTMINER S21+ HYD.": BMMinerS21PlusHydro,
@@ -769,12 +770,22 @@ MINER_CLASSES = {
     },
     MinerTypes.BITFUFU: {
         None: BitfufuUnknown,
+        "ANTMINER S21 EX": BitfufuS21Ex,
+        "ANTMINER T21 EX": BitfufuT21Ex,
+        "ANTMINER S19K PRO EX": BitfufuS19KProEx,
+        "ANTMINER S19J PRO+ EX": BitfufuS19jProPlusEx,
+        "ANTMINER S19J PRO EX": BitfufuS19jProEx,
+        "ANTMINER S19 PRO EX": BitfufuS19ProEx,
+        "ANTMINER S19 EX": BitfufuS19Ex,
+        "ANTMINER S19 PRO+ HYD EX": BitfufuS19ProPlusHydroEx,
         "ANTMINER S19 XP EX": BitfufuS19XPEx,
+        "ANTMINER S19 XP HYD EX": BitfufuS19XPHydroEx,
     },
     MinerTypes.HASHMASTER: {
         None: HashMasterUnknown,
         "ANTMINER S21 HYD (HASHMASTER)": HashMasterS21Hydro,
         "ANTMINER S21E HYD (HASHMASTER)": HashMasterS21EHydro,
+        "ANTMINER S21 XP (HASHMASTER)": HashMasterS21XP,
         "ANTMINER S21+ HYD (HASHMASTER)": HashMasterS21PlusHydro,
         "ANTMINER S19 XP+ HYD (HASHMASTER)": HashMasterS19XPPlusHydro,
     },
