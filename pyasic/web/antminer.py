@@ -203,6 +203,11 @@ class AntminerModernWebAPI(BaseWebAPI):
                     url,
                     timeout=settings.get("api_function_timeout", 3),
                 )
+        except httpx.ConnectError as e:
+            return {
+                "success": False,
+                "message": f"Connection error occurred: {type(e), str(e)}",
+            }
         except httpx.HTTPError as e:
             return {
                 "success": False,

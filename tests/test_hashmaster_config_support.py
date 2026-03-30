@@ -1,9 +1,16 @@
 import asyncio
+import warnings
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
+import pytest
+import requests
+
 from pyasic.config import MinerConfig, MiningModeConfig, PoolConfig
+from pyasic.errors import APIWarning
 from pyasic.miners.antminer.hashmaster.X21 import HashMasterS21PlusHydro
+from pyasic.miners.data import DataOptions
+from pyasic.web.hashmaster import HashMasterAntminerWebAPI, HttpClient
 
 
 def test_hashmaster_config_serializer_matches_current_hashmaster_payload_shape():
@@ -114,3 +121,71 @@ def test_hashmaster_backend_uses_hashmaster_config_methods(monkeypatch):
 
     asyncio.run(miner.send_config(expected_config))
     miner.web.set_miner_conf.assert_awaited_once_with(serialized_payload)
+
+
+def test_hashmaster_get_data_returns_empty_serial_number_on_6060_connection_error(
+    monkeypatch,
+):
+    miner = HashMasterS21PlusHydro("10.10.101.10")
+
+    monkeypatch.setattr(
+        miner.web,
+        "multicommand",
+        AsyncMock(return_value={"multicommand": True, "get_system_info": {}}),
+    )
+    monkeypatch.setattr(
+        HttpClient,
+        "get",
+        AsyncMock(
+            side_effect=requests.exceptions.ConnectionError(
+                "HTTPConnectionPool(host='10.10.101.10', port=6060): Failed to establish a new connection"
+            )
+        ),
+    )
+
+    with pytest.warns(
+        APIWarning,
+        match=r"HashMaster 6060 endpoint get_sn on 10\.10\.101\.10",
+    ):
+        miner_data = asyncio.run(miner.get_data(include=[DataOptions.SERIAL_NUMBER]))
+
+    assert miner_data.serial_number is None
+
+
+def test_hashmaster_http_get_only_warns_for_6060(monkeypatch):
+    api = HashMasterAntminerWebAPI("10.10.101.10")
+
+    monkeypatch.setattr(
+        HttpClient,
+        "get",
+        AsyncMock(
+            side_effect=requests.exceptions.ConnectionError(
+                "HTTPConnectionPool(host='10.10.101.10', port=80): Failed to establish a new connection"
+            )
+        ),
+    )
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        response = asyncio.run(api._invoke_http_get("get_system_info", 80))
+
+    assert response["success"] is False
+    assert len(caught) == 0
+
+
+def test_hashmaster_http_get_keeps_timeout_handling(monkeypatch):
+    api = HashMasterAntminerWebAPI("10.10.101.10")
+
+    monkeypatch.setattr(
+        HttpClient,
+        "get",
+        AsyncMock(side_effect=requests.exceptions.Timeout("request timed out")),
+    )
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        response = asyncio.run(api._invoke_http_get("get_sn", 6060))
+
+    assert response["success"] is False
+    assert "Timeout error occurred" in response["message"]
+    assert len(caught) == 0

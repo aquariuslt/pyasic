@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import asyncio
 import json
+import warnings
 from typing import Any
 
 import httpx
 import requests
 
 from pyasic import settings
+from pyasic.errors import APIWarning
 from pyasic.web.base import BaseWebAPI
 
 
@@ -342,6 +344,17 @@ class HashMasterAntminerWebAPI(BaseWebAPI):
             return {
                 "success": False,
                 "message": f"Timeout error occurred: {type(e), str(e)}",
+            }
+        except requests.exceptions.ConnectionError as e:
+            message = f"HTTP error occurred: {type(e), str(e)}"
+            if url_port == 6060:
+                warnings.warn(
+                    f"Failed to call HashMaster 6060 endpoint {path} on {self.ip}: {message}",
+                    APIWarning,
+                )
+            return {
+                "success": False,
+                "message": message,
             }
         else:
             if data.status_code == 200:
