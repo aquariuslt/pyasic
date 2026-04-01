@@ -15,6 +15,7 @@ from pyasic.miners.antminer.bitfufu.X19 import (
     BitfufuS19ProPlusHydroEx,
     BitfufuS19XPEx,
     BitfufuS19XPHydroEx,
+    BitfufuS19jXPEx,
     BitfufuS19jProEx,
     BitfufuS19jProPlusEx,
 )
@@ -32,6 +33,7 @@ BITFUFU_MODEL_CASES = [
     ("ANTMINER S19K PRO EX", BitfufuS19KProEx, "S19K Pro"),
     ("ANTMINER S19J PRO+ EX", BitfufuS19jProPlusEx, "S19j Pro+"),
     ("ANTMINER S19J PRO EX", BitfufuS19jProEx, "S19j Pro"),
+    ("ANTMINER S19J XP EX", BitfufuS19jXPEx, "S19j XP"),
     ("ANTMINER S19 PRO EX", BitfufuS19ProEx, "S19 Pro"),
     ("ANTMINER S19 EX", BitfufuS19Ex, "S19"),
     ("ANTMINER S19 PRO+ HYD EX", BitfufuS19ProPlusHydroEx, "S19 Pro+ Hydro"),

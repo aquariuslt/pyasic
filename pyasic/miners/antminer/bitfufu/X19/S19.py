@@ -6,6 +6,7 @@ from pyasic.miners.device.models import (
     S19Pro,
     S19ProPlusHydro,
     S19XPHydro,
+    S19jXP,
     S19jPro,
     S19jProPlus,
 )
@@ -28,6 +29,10 @@ class BitfufuS19jProPlusEx(BitfufuMiner, S19jProPlus):
 
 
 class BitfufuS19KProEx(BitfufuMiner, S19KPro):
+    pass
+
+
+class BitfufuS19jXPEx(BitfufuMiner, S19jXP):
     pass
 
 

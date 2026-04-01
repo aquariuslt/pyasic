@@ -775,6 +775,7 @@ MINER_CLASSES = {
         "ANTMINER S19K PRO EX": BitfufuS19KProEx,
         "ANTMINER S19J PRO+ EX": BitfufuS19jProPlusEx,
         "ANTMINER S19J PRO EX": BitfufuS19jProEx,
+        "ANTMINER S19J XP EX": BitfufuS19jXPEx,
         "ANTMINER S19 PRO EX": BitfufuS19ProEx,
         "ANTMINER S19 EX": BitfufuS19Ex,
         "ANTMINER S19 PRO+ HYD EX": BitfufuS19ProPlusHydroEx,
