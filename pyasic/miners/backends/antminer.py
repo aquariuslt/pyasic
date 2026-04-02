@@ -144,6 +144,27 @@ class AntminerModern(BMMiner):
         #         break
         #     await asyncio.sleep(1)
 
+    async def update_configuration_lock(self, file: Path) -> str:
+        try:
+            result = await self.web.update_config_lock(file=file)
+            if result.get("success"):
+                logging.info(
+                    "Configuration lock process completed successfully for AntMiner."
+                )
+                return "Configuration lock update completed successfully."
+            else:
+                error_message = result.get("message", "Unknown error")
+                logging.error(
+                    f"Configuration lock update failed. Response: {error_message}"
+                )
+                raise ValueError(f"Configuration lock update failed. Response: {error_message}")
+        except Exception as e:
+            logging.error(
+                f"An error occurred during the firmware upgrade process: {e}",
+                exc_info=True,
+            )
+            raise
+
     async def upgrade_firmware(self, file: Path, keep_settings: bool = True) -> str:
         """
         Upgrade the firmware of the AntMiner device.
@@ -162,7 +183,6 @@ class AntminerModern(BMMiner):
             result = await self.web.update_firmware(
                 file=file, keep_settings=keep_settings
             )
-
             if result.get("success"):
                 logging.info(
                     "Firmware upgrade process completed successfully for AntMiner."

@@ -468,6 +468,50 @@ class AntminerModernWebAPI(BaseWebAPI):
             ipSub=subnet_mask,
         )
 
+    async def update_config_lock(self, file: Path) -> dict:
+        command = "upgrade"
+
+        async with aiofiles.open(file, "rb") as firmware:
+            file_content = await firmware.read()
+
+        url = f"http://{self.ip}:{self.port}/cgi-bin/{command}.cgi"
+        auth = httpx.DigestAuth(self.username, self.pwd)
+        try:
+            async with httpx.AsyncClient(transport=settings.transport()) as client:
+                data = await client.post(
+                    url,
+                    auth=auth,
+                    timeout=30,
+                    files={
+                        "firmware": file_content,
+                    },
+                )
+        except httpx.HTTPError as e:
+            return {
+                "success": False,
+                "message": f"HTTP error occurred: {type(e), str(e)}",
+            }
+        else:
+            if data.status_code == 200:
+                try:
+                    json_data = data.json()
+                    if json_data.get("code") == "U001" and json_data.get("msg") == "6":
+                        return {
+                            "success": True,
+                        }
+                    else:
+                        return {
+                            "success": False,
+                            "message": f"Unknown error: message={data.text}",
+                        }
+                except json.decoder.JSONDecodeError:
+                    return {"success": False, "message": "Failed to decode JSON"}
+            else:
+                return {
+                    "success": False,
+                    "message": f"Unknown error with http failure: code={data.status_code}, message={data.text}",
+                }
+
     async def update_firmware(self, file: Path, keep_settings: bool = True) -> dict:
         """Perform a system update by uploading a firmware file and sending a command to initiate the update."""
 
