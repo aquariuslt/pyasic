@@ -22,6 +22,7 @@ from pyasic.miners.antminer.bitfufu.X19 import (
 from pyasic.miners.antminer.bitfufu.X21 import BitfufuS21Ex, BitfufuT21Ex
 from pyasic.miners.antminer.hashmaster.X21 import (
     HashMasterS21PlusHydro,
+    HashMasterS21EXPHydro,
     HashMasterS21XP,
 )
 from pyasic.miners.antminer.hashmaster.X19 import HashMasterS19XPHydro
@@ -45,6 +46,7 @@ BITFUFU_MODEL_CASES = [
 HASHMASTER_MODEL_CASES = [
     ("Antminer S19 XP Hyd (HashMaster)", HashMasterS19XPHydro, "S19 XP Hydro"),
     ("Antminer S21+ Hyd (HashMaster)", HashMasterS21PlusHydro, "S21+ Hydro"),
+    ("Antminer S21e XP Hyd (HashMaster)", HashMasterS21EXPHydro, "S21e XP Hydro"),
     ("Antminer S21 XP (HashMaster)", HashMasterS21XP, "S21 XP"),
 ]
 

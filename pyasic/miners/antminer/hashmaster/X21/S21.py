@@ -1,5 +1,11 @@
 from pyasic.miners.backends.hashmaster import HashMasterMiner
-from pyasic.miners.device.models import S21EHydro, S21Hydro, S21PlusHydro, S21XP
+from pyasic.miners.device.models import (
+    S21EHydro,
+    S21EXPHydro,
+    S21Hydro,
+    S21PlusHydro,
+    S21XP,
+)
 
 
 class HashMasterS21XP(HashMasterMiner, S21XP):
@@ -15,4 +21,8 @@ class HashMasterS21Hydro(HashMasterMiner, S21Hydro):
 
 
 class HashMasterS21EHydro(HashMasterMiner, S21EHydro):
+    pass
+
+
+class HashMasterS21EXPHydro(HashMasterMiner, S21EXPHydro):
     pass
