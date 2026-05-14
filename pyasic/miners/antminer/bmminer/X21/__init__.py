@@ -15,7 +15,10 @@
 # ------------------------------------------------------------------------------
 from .S21 import (
     BMMinerS21,
+    BMMinerS21EHydro,
+    BMMinerS21EXPHydro,
     BMMinerS21Hydro,
+    BMMinerS21XPHydro,
     BMMinerS21Plus,
     BMMinerS21PlusHydro,
     BMMinerS21Pro,

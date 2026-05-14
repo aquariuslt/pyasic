@@ -19,6 +19,7 @@ from .S21 import (
     S21EHydro,
     S21EXPHydro,
     S21Hydro,
+    S21XPHydro,
     S21Plus,
     S21PlusHydro,
     S21Pro,

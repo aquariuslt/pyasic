@@ -33,7 +33,11 @@ from pyasic import settings
 from pyasic.logger import logger
 from pyasic.miners.antminer import *
 from pyasic.miners.antminer.bitfufu import *
-from pyasic.miners.antminer.bmminer.X21.S21 import BMMinerS21EHydro
+from pyasic.miners.antminer.bmminer.X21.S21 import (
+    BMMinerS21EHydro,
+    BMMinerS21EXPHydro,
+    BMMinerS21XPHydro,
+)
 from pyasic.miners.antminer.luxos.X21.S21 import LUXMinerS21Hydro
 from pyasic.miners.auradine import *
 from pyasic.miners.avalonminer import *
@@ -188,6 +192,8 @@ MINER_CLASSES = {
         "ANTMINER S21+ HYD.": BMMinerS21PlusHydro,
         "ANTMINER S21 PRO": BMMinerS21Pro,
         "ANTMINER S21E HYD.": BMMinerS21EHydro,
+        "ANTMINER S21E XP HYD.": BMMinerS21EXPHydro,
+        "ANTMINER S21 XP HYD.": BMMinerS21XPHydro,
         "ANTMINER T21": BMMinerT21,
         "ANTMINER S21 HYD.": BMMinerS21Hydro,
     },

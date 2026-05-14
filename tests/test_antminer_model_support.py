@@ -5,7 +5,9 @@ import json
 import pytest
 
 from pyasic.device.firmware import MinerFirmware
+from pyasic.miners.antminer.bmminer.X21 import BMMinerS21EXPHydro
 from pyasic.miners.antminer.bmminer.X21 import BMMinerS21PlusHydro
+from pyasic.miners.antminer.bmminer.X21 import BMMinerS21XPHydro
 from pyasic.miners.antminer.bmminer.X21 import BMMinerS21XP
 from pyasic.miners.antminer.bmminer.X19 import BMMinerS19XPPlusHydro
 from pyasic.miners.antminer.bitfufu.X19 import (
@@ -29,6 +31,14 @@ from pyasic.miners.antminer.hashmaster.X19 import HashMasterS19XPHydro
 from pyasic.miners.factory import MinerFactory, MinerTypes
 
 
+STOCK_MODEL_CASES = [
+    ("Antminer S19 XP+ Hyd.", BMMinerS19XPPlusHydro, "S19 XP+ Hydro"),
+    ("Antminer S21+ Hyd", BMMinerS21PlusHydro, "S21+ Hydro"),
+    ("Antminer S21 XP", BMMinerS21XP, "S21 XP"),
+    ("Antminer S21e XP Hyd.", BMMinerS21EXPHydro, "S21e XP Hydro"),
+    ("Antminer S21 XP Hyd.", BMMinerS21XPHydro, "S21 XP Hydro"),
+]
+
 BITFUFU_MODEL_CASES = [
     ("ANTMINER S21 EX", BitfufuS21Ex, "S21"),
     ("ANTMINER T21 EX", BitfufuT21Ex, "T21"),
@@ -51,37 +61,21 @@ HASHMASTER_MODEL_CASES = [
 ]
 
 
-def test_factory_supports_s19_xp_plus_hydro_model_string():
+@pytest.mark.parametrize(
+    ("miner_model", "expected_class", "expected_raw_model"),
+    STOCK_MODEL_CASES,
+)
+def test_factory_supports_antminer_stock_model_strings(
+    miner_model, expected_class, expected_raw_model
+):
     miner = MinerFactory._select_miner_from_classes(
         ip=ipaddress.ip_address("10.10.101.10"),
-        miner_model="Antminer S19 XP+ Hyd.",
+        miner_model=miner_model,
         miner_type=MinerTypes.ANTMINER,
     )
 
-    assert isinstance(miner, BMMinerS19XPPlusHydro)
-    assert str(miner.raw_model) == "S19 XP+ Hydro"
-
-
-def test_factory_supports_s21_plus_hyd_model_string():
-    miner = MinerFactory._select_miner_from_classes(
-        ip=ipaddress.ip_address("10.10.101.10"),
-        miner_model="Antminer S21+ Hyd",
-        miner_type=MinerTypes.ANTMINER,
-    )
-
-    assert isinstance(miner, BMMinerS21PlusHydro)
-    assert str(miner.raw_model) == "S21+ Hydro"
-
-
-def test_factory_supports_s21_xp_model_string():
-    miner = MinerFactory._select_miner_from_classes(
-        ip=ipaddress.ip_address("10.10.101.10"),
-        miner_model="Antminer S21 XP",
-        miner_type=MinerTypes.ANTMINER,
-    )
-
-    assert isinstance(miner, BMMinerS21XP)
-    assert str(miner.raw_model) == "S21 XP"
+    assert isinstance(miner, expected_class)
+    assert str(miner.raw_model) == expected_raw_model
 
 
 @pytest.mark.parametrize(
