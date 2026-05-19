@@ -30,7 +30,21 @@ class PoolUrl(BaseModel):
             return f"{self.scheme.value}://{self.host}:{self.port}"
 
     @classmethod
+    def _normalize_url(cls, url):
+        """
+        >>> PoolUrl._normalize_url("stratum+tcp://stratum+ssl://btc-eu.spiderpool.com:2310")
+        'stratum+ssl://btc-eu.spiderpool.com:2310'
+        """
+        count = url.count("//")
+        if count > 1:
+            split_url = url.split("//")
+            normalized = "//".join(split_url[-2:])
+            return normalized
+        return url
+
+    @classmethod
     def from_str(cls, url: str) -> Self | None:
+        url = cls._normalize_url(url)
         parsed_url = urlparse(url)
         if not parsed_url.hostname:
             return None
