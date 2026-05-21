@@ -22,6 +22,23 @@ from typing import Any
 from pyasic.errors import APIWarning
 
 
+def normalize_wattage_value(value: Any) -> int | None:
+    if value is None:
+        return None
+
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+
+    power = str(value).strip()
+    if power.startswith("miner power:"):
+        power = power.split(":", 1)[-1].strip()
+
+    if power.isdigit():
+        return int(power)
+
+    return None
+
+
 class BaseWebAPI(ABC):
     def __init__(self, ip: str) -> None:
         # ip address of the miner

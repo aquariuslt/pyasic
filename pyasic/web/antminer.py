@@ -29,7 +29,7 @@ import aiofiles
 import httpx
 
 from pyasic import settings
-from pyasic.web.base import BaseWebAPI
+from pyasic.web.base import BaseWebAPI, normalize_wattage_value
 
 
 class AntminerModernWebAPI(BaseWebAPI):
@@ -542,13 +542,11 @@ class AntminerModernWebAPI(BaseWebAPI):
         """
         response = await self._invoke_http_get("miner_power", 6060)
         if response.get("success") and response.get("data"):
-            power = response.get("data")
-            if power is not None and str(power).startswith("miner power:"):
-                power = power.split(":")[-1]
-                if power.isdigit():
-                    return {
-                        "wattage": int(power),
-                    }
+            wattage = normalize_wattage_value(response.get("data"))
+            if wattage is not None:
+                return {
+                    "wattage": wattage,
+                }
 
         return {}
 
