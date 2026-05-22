@@ -1,14 +1,15 @@
 import logging
 from datetime import datetime
+from pathlib import Path
 from typing import List, Optional
 
-from pyasic.config import MinerConfig
-from pyasic.ssh.antminer import AntminerModernSSH
-from pyasic.data import HashBoard, X19Error, Fan
-from pyasic.data.error_codes import MinerErrorData
+from pyasic.config import MinerConfig, MiningModeConfig
+from pyasic.data import Fan, HashBoard
+from pyasic.data.error_codes import MinerErrorData, X19Error
 from pyasic.data.pools import PoolMetrics, PoolUrl
 from pyasic.device.algorithm import AlgoHashRate
 from pyasic.errors import APIError
+from pyasic.miners.backends.bmminer import BMMiner
 from pyasic.miners.data import (
     DataFunction,
     DataLocations,
@@ -16,13 +17,13 @@ from pyasic.miners.data import (
     RPCAPICommand,
     WebAPICommand,
 )
-from pyasic.miners.device.firmware import HashMasterFirmware
+from pyasic.miners.device.firmware import SpiderOSFirmware
 from pyasic.miners.backends.utils import normalize_antminer_like_serial_number
-from pyasic.rpc.antminer import AntminerRPCAPI
-from pyasic.web.hashmaster import HashMasterAntminerWebAPI
+from pyasic.rpc.spideros import SpiderOSRPCAPI
+from pyasic.ssh.antminer import AntminerModernSSH
+from pyasic.web.spideros import SpiderOSWebAPI
 
-
-HASHMASTER_ANTMINER_DATA_LOC = DataLocations(
+SPIDER_OS_DATA_LOC = DataLocations(
     **{
         str(DataOptions.MAC): DataFunction(
             "_get_mac",
@@ -39,6 +40,10 @@ HASHMASTER_ANTMINER_DATA_LOC = DataLocations(
         str(DataOptions.WATTAGE): DataFunction(
             "_get_wattage",
             [WebAPICommand("web_get_system_info", "get_system_info")],
+        ),
+        str(DataOptions.CONTROL_BOARD): DataFunction(
+            "_get_control_board",
+            [WebAPICommand("web_get_miner_type", "miner_type")],
         ),
         str(DataOptions.HOSTNAME): DataFunction(
             "_get_hostname",
@@ -68,10 +73,7 @@ HASHMASTER_ANTMINER_DATA_LOC = DataLocations(
             "_get_fault_light",
             [WebAPICommand("web_get_blink_status", "get_blink_status")],
         ),
-        str(DataOptions.HASHBOARDS): DataFunction(
-            "_get_hashboards",
-            [],
-        ),
+        str(DataOptions.HASHBOARDS): DataFunction("_get_hashboards", []),
         str(DataOptions.IS_MINING): DataFunction(
             "_is_mining",
             [WebAPICommand("web_get_conf", "get_miner_conf")],
@@ -88,44 +90,28 @@ HASHMASTER_ANTMINER_DATA_LOC = DataLocations(
 )
 
 
-class HashMasterMiner(HashMasterFirmware):
-    """Handler for AntMiners with the HashMaster web interface, such as S19"""
+class SpiderOSMiner(SpiderOSFirmware):
+    uses_extended_hydro_temp_layout = False
 
-    _web_cls = HashMasterAntminerWebAPI
-    web: HashMasterAntminerWebAPI
+    _web_cls = SpiderOSWebAPI
+    web: SpiderOSWebAPI
 
-    _rpc_cls = AntminerRPCAPI
-    rpc: AntminerRPCAPI
+    _rpc_cls = SpiderOSRPCAPI
+    rpc: SpiderOSRPCAPI
 
     _ssh_cls = AntminerModernSSH
     ssh: AntminerModernSSH
 
-    data_locations = HASHMASTER_ANTMINER_DATA_LOC
+    data_locations = SPIDER_OS_DATA_LOC
 
-    supports_shutdown = False
-    supports_power_modes = False
+    supports_shutdown = True
+    supports_power_modes = True
 
     async def get_config(self) -> MinerConfig:
-        conf_summary = None
-        autotune_presets = None
-        try:
-            conf_summary = await self.web.get_miner_conf()
-        except APIError:
-            pass
-        try:
-            autotune_presets = await self.web.get_autotune_presets()
-        except APIError:
-            pass
-        if conf_summary:
-            self.config = MinerConfig.from_hashmaster_am(
-                conf_summary,
-                autotune_presets,
-            )
+        data = await self.web.get_miner_conf()
+        if data:
+            self.config = MinerConfig.from_am_modern(data)
         return self.config
-
-    async def send_config(self, config: MinerConfig, user_suffix: str = None) -> None:
-        self.config = config
-        await self.web.set_miner_conf(config.as_hashmaster_am(user_suffix=user_suffix))
 
     async def _get_api_ver(self, rpc_version: dict = None) -> Optional[str]:
         if rpc_version is None:
@@ -157,136 +143,93 @@ class HashMasterMiner(HashMasterFirmware):
 
         return self.fw_ver
 
-    async def _get_hashrate(self, rpc_summary: dict = None) -> Optional[AlgoHashRate]:
-        # get hr from API
-        if rpc_summary is None:
-            try:
-                rpc_summary = await self.rpc.summary()
-            except APIError:
-                pass
+    async def send_config(self, config: MinerConfig, user_suffix: str = None) -> None:
+        self.config = config
+        await self.web.set_miner_conf(config.as_am_modern(user_suffix=user_suffix))
 
-        if rpc_summary is not None:
-            try:
-                return self.algo.hashrate(
-                    rate=float(rpc_summary["SUMMARY"][0]["GHS 5s"]),
-                    unit=self.algo.unit.GH,
-                ).into(self.algo.unit.default)
-            except (LookupError, ValueError, TypeError):
-                pass
+    async def update_configuration_lock(self, file: Path) -> str:
+        result = await self.web.update_config_lock(file=file)
+        if result.get("success"):
+            logging.info(
+                "Configuration lock process completed successfully for SpiderOS."
+            )
+            return "Configuration lock update completed successfully."
 
-    async def _get_hashboards(self) -> List[HashBoard]:
-        if self.expected_hashboards is None:
-            return []
+        error_message = result.get("message", "Unknown error")
+        logging.error(f"Configuration lock update failed. Response: {error_message}")
+        raise ValueError(f"Configuration lock update failed. Response: {error_message}")
 
-        hashboards = [
-            HashBoard(slot=idx, expected_chips=self.expected_chips)
-            for idx in range(self.expected_hashboards)
-        ]
+    async def upgrade_firmware(self, file: Path, keep_settings: bool = True) -> str:
+        if not file:
+            raise ValueError("File location must be provided for firmware upgrade.")
 
         try:
-            rpc_stats = await self.rpc.stats(new_api=True)
-        except APIError:
-            return hashboards
+            result = await self.web.update_firmware(
+                file=file, keep_settings=keep_settings
+            )
+            if result.get("success"):
+                logging.info(
+                    "Firmware upgrade process completed successfully for SpiderOS."
+                )
+                return "Firmware upgrade completed successfully."
+            error_message = result.get("message", "Unknown error")
+            logging.error(f"Firmware upgrade failed. Response: {error_message}")
+            return f"Firmware upgrade failed. Response: {error_message}"
+        except Exception as e:
+            logging.error(
+                f"An error occurred during the firmware upgrade process: {e}",
+                exc_info=True,
+            )
+            raise
 
-        if rpc_stats is not None:
+    async def fault_light_on(self) -> bool:
+        data = await self.web.blink(blink=True)
+        if data and data.get("code") == "B000":
+            self.light = True
+        return self.light
+
+    async def fault_light_off(self) -> bool:
+        data = await self.web.blink(blink=False)
+        if data and data.get("code") == "B100":
+            self.light = False
+        return self.light
+
+    async def reboot(self) -> bool:
+        data = await self.web.reboot()
+        if data:
+            return True
+        return False
+
+    async def stop_mining(self) -> bool:
+        cfg = await self.get_config()
+        cfg.mining_mode = MiningModeConfig.sleep()
+        await self.send_config(cfg)
+        return True
+
+    async def resume_mining(self) -> bool:
+        cfg = await self.get_config()
+        cfg.mining_mode = MiningModeConfig.normal()
+        await self.send_config(cfg)
+        return True
+
+    async def _get_control_board(
+        self, web_get_miner_type: dict = None
+    ) -> Optional[str]:
+        if self.control_board:
+            return self.control_board
+
+        if web_get_miner_type is None:
             try:
-                for board in rpc_stats["STATS"][0]["chain"]:
-                    hashboards[board["index"]].hashrate = self.algo.hashrate(
-                        rate=board["rate_real"], unit=self.algo.unit.GH
-                    ).into(self.algo.unit.default)
-                    hashboards[board["index"]].chips = board["asic_num"]
-
-                    if "Hyd" in self.model:
-                        hashboards[board["index"]].inlet_temp = board["temp_pcb"][0]
-                        hashboards[board["index"]].outlet_temp = board["temp_pcb"][2]
-                        hashboards[board["index"]].chip_temp = board["temp_pic"][0]
-                        board_temp_data = list(
-                            filter(
-                                lambda x: not x == 0,
-                                [
-                                    board["temp_pic"][1],
-                                    board["temp_pic"][2],
-                                    board["temp_pic"][3],
-                                    board["temp_pcb"][1],
-                                    board["temp_pcb"][3],
-                                ],
-                            )
-                        )
-                        hashboards[board["index"]].temp = (
-                            sum(board_temp_data) / len(board_temp_data)
-                            if len(board_temp_data) > 0
-                            else 0
-                        )
-
-                    else:
-                        board_temp_data = list(
-                            filter(lambda x: not x == 0, board["temp_pcb"])
-                        )
-                        hashboards[board["index"]].temp = (
-                            sum(board_temp_data) / len(board_temp_data)
-                            if len(board_temp_data) > 0
-                            else 0
-                        )
-                        chip_temp_data = list(
-                            filter(lambda x: not x == 0, board["temp_chip"])
-                        )
-                        hashboards[board["index"]].chip_temp = (
-                            sum(chip_temp_data) / len(chip_temp_data)
-                            if len(chip_temp_data) > 0
-                            else 0
-                        )
-
-                    hashboards[board["index"]].serial_number = board["sn"]
-                    hashboards[board["index"]].missing = False
-                    hashboards[board["index"]].chip_frequency = board["freq_avg"]
-            except LookupError:
-                pass
-        return hashboards
-
-    async def _get_fans(self, rpc_stats: dict = None) -> List[Fan]:
-        if self.expected_fans is None:
-            return []
-
-        if rpc_stats is None:
-            try:
-                rpc_stats = await self.rpc.stats()
+                web_get_miner_type = await self.web.get_miner_type()
             except APIError:
-                pass
+                return self.control_board
 
-        fans = [Fan() for _ in range(self.expected_fans)]
-        if rpc_stats is not None:
-            try:
-                fan_offset = -1
+        if isinstance(web_get_miner_type, dict):
+            control_board = web_get_miner_type.get("subtype")
+            if control_board:
+                self.control_board = control_board
 
-                for fan_num in range(1, 8, 4):
-                    for _f_num in range(4):
-                        f = rpc_stats["STATS"][1].get(f"fan{fan_num + _f_num}", 0)
-                        if f and not f == 0 and fan_offset == -1:
-                            fan_offset = fan_num
-                if fan_offset == -1:
-                    fan_offset = 1
-
-                for fan in range(self.expected_fans):
-                    fans[fan].speed = rpc_stats["STATS"][1].get(
-                        f"fan{fan_offset + fan}", 0
-                    )
-            except LookupError:
-                pass
-
-        return fans
-
-    async def _get_uptime(self, rpc_stats: dict = None) -> Optional[int]:
-        if rpc_stats is None:
-            try:
-                rpc_stats = await self.rpc.stats()
-            except APIError:
-                pass
-
-        if rpc_stats is not None:
-            try:
-                return int(rpc_stats["STATS"][1]["Elapsed"])
-            except LookupError:
-                pass
+        return self.control_board
 
     async def _get_serial_number(
         self, web_get_system_info: dict = None
@@ -361,35 +304,6 @@ class HashMasterMiner(HashMasterFirmware):
         except KeyError:
             pass
 
-    async def fault_light_on(self) -> bool:
-        # this should time out, after it does do a check
-        await self.web.blink(blink=True)
-        try:
-            data = await self.web.get_blink_status()
-            if data:
-                if data["blink"]:
-                    self.light = True
-        except KeyError:
-            pass
-        return self.light
-
-    async def fault_light_off(self) -> bool:
-        await self.web.blink(blink=False)
-        try:
-            data = await self.web.get_blink_status()
-            if data:
-                if not data["blink"]:
-                    self.light = False
-        except KeyError:
-            pass
-        return self.light
-
-    async def reboot(self) -> bool:
-        data = await self.web.reboot()
-        if data:
-            return True
-        return False
-
     async def _get_errors(self, web_summary: dict = None) -> List[MinerErrorData]:
         if web_summary is None:
             try:
@@ -402,13 +316,129 @@ class HashMasterMiner(HashMasterFirmware):
             try:
                 for item in web_summary["SUMMARY"][0]["status"]:
                     try:
-                        if not item["status"] == "s":
+                        if item["status"] != "s":
                             errors.append(X19Error(error_message=item["msg"]))
                     except KeyError:
                         continue
             except LookupError:
                 pass
         return errors
+
+    async def _get_hashrate(self, rpc_summary: dict = None) -> Optional[AlgoHashRate]:
+        if rpc_summary is None:
+            try:
+                rpc_summary = await self.rpc.summary()
+            except APIError:
+                pass
+
+        if rpc_summary is not None:
+            try:
+                return self.algo.hashrate(
+                    rate=float(rpc_summary["SUMMARY"][0]["GHS 5s"]),
+                    unit=self.algo.unit.GH,
+                ).into(self.algo.unit.default)
+            except (LookupError, ValueError, TypeError):
+                pass
+
+    async def _get_hashboards(self) -> List[HashBoard]:
+        if self.expected_hashboards is None:
+            return []
+
+        hashboards = [
+            HashBoard(slot=idx, expected_chips=self.expected_chips)
+            for idx in range(self.expected_hashboards)
+        ]
+
+        try:
+            rpc_stats = await self.rpc.stats(new_api=True)
+        except APIError:
+            return hashboards
+
+        if rpc_stats is not None:
+            try:
+                for board in rpc_stats["STATS"][0]["chain"]:
+                    hashboards[board["index"]].hashrate = self.algo.hashrate(
+                        rate=board["rate_real"], unit=self.algo.unit.GH
+                    ).into(self.algo.unit.default)
+                    hashboards[board["index"]].chips = board["asic_num"]
+
+                    if self.uses_extended_hydro_temp_layout:
+                        hashboards[board["index"]].inlet_temp = board["temp_pcb"][0]
+                        hashboards[board["index"]].outlet_temp = board["temp_pcb"][2]
+                        hashboards[board["index"]].chip_temp = board["temp_pic"][0]
+                        board_temp_data = list(
+                            filter(
+                                lambda x: x != 0,
+                                [
+                                    board["temp_pic"][1],
+                                    board["temp_pic"][2],
+                                    board["temp_pic"][3],
+                                    board["temp_pcb"][1],
+                                    board["temp_pcb"][3],
+                                ],
+                            )
+                        )
+                        hashboards[board["index"]].temp = (
+                            sum(board_temp_data) / len(board_temp_data)
+                            if len(board_temp_data) > 0
+                            else 0
+                        )
+                    else:
+                        board_temp_data = list(
+                            filter(lambda x: x != 0, board["temp_pcb"])
+                        )
+                        hashboards[board["index"]].temp = (
+                            sum(board_temp_data) / len(board_temp_data)
+                            if len(board_temp_data) > 0
+                            else 0
+                        )
+                        chip_temp_data = list(
+                            filter(lambda x: x != 0, board["temp_chip"])
+                        )
+                        hashboards[board["index"]].chip_temp = (
+                            sum(chip_temp_data) / len(chip_temp_data)
+                            if len(chip_temp_data) > 0
+                            else 0
+                        )
+
+                    hashboards[board["index"]].serial_number = board["sn"]
+                    hashboards[board["index"]].missing = False
+                    hashboards[board["index"]].chip_frequency = board["freq_avg"]
+            except LookupError:
+                pass
+        return hashboards
+
+    async def _get_fans(self, rpc_stats: dict = None) -> List[Fan]:
+        if self.expected_fans is None:
+            return []
+
+        if rpc_stats is None:
+            try:
+                rpc_stats = await self.rpc.stats()
+            except APIError:
+                pass
+
+        fans = [Fan() for _ in range(self.expected_fans)]
+        if rpc_stats is not None:
+            try:
+                fan_offset = -1
+
+                for fan_num in range(1, 8, 4):
+                    for _f_num in range(4):
+                        f = rpc_stats["STATS"][1].get(f"fan{fan_num + _f_num}", 0)
+                        if f and f != 0 and fan_offset == -1:
+                            fan_offset = fan_num
+                if fan_offset == -1:
+                    fan_offset = 1
+
+                for fan in range(self.expected_fans):
+                    fans[fan].speed = rpc_stats["STATS"][1].get(
+                        f"fan{fan_offset + fan}", 0
+                    )
+            except LookupError:
+                pass
+
+        return fans
 
     async def _get_fault_light(
         self, web_get_blink_status: dict = None
@@ -434,7 +464,7 @@ class HashMasterMiner(HashMasterFirmware):
     ) -> Optional[AlgoHashRate]:
         if rpc_stats is None:
             try:
-                rpc_stats = await self.rpc.stats()
+                rpc_stats = await self.rpc.stats(new_api=True)
             except APIError:
                 pass
 
@@ -449,7 +479,19 @@ class HashMasterMiner(HashMasterFirmware):
                     rate=float(expected_rate), unit=self.algo.unit.from_str(rate_unit)
                 ).into(self.algo.unit.default)
             except LookupError:
-                pass
+                try:
+                    rpc_stats = await self.rpc.stats(new_api=True)
+                    expected_rate = rpc_stats["STATS"][1]["total_rateideal"]
+                    try:
+                        rate_unit = rpc_stats["STATS"][1]["rate_unit"]
+                    except KeyError:
+                        rate_unit = "GH"
+                    return self.algo.hashrate(
+                        rate=float(expected_rate),
+                        unit=self.algo.unit.from_str(rate_unit),
+                    ).into(self.algo.unit.default)
+                except (APIError, LookupError):
+                    pass
 
     async def set_static_ip(
         self,
@@ -493,7 +535,7 @@ class HashMasterMiner(HashMasterFirmware):
             protocol=protocol,
         )
 
-    async def download_logs(self, category: str = "history") -> dict or None:
+    async def download_logs(self, category: str = "history") -> dict | None:
         try:
             data = await self.web.download_logs(category)
             return data
@@ -518,16 +560,23 @@ class HashMasterMiner(HashMasterFirmware):
             except LookupError:
                 pass
 
+    async def _get_uptime(self, rpc_stats: dict = None) -> Optional[int]:
+        if rpc_stats is None:
+            try:
+                rpc_stats = await self.rpc.stats()
+            except APIError:
+                pass
+
+        if rpc_stats is not None:
+            try:
+                return int(rpc_stats["STATS"][1]["Elapsed"])
+            except LookupError:
+                pass
+
     @staticmethod
     def _parse_last_share_to_timestamp(last_share_time: str) -> int:
-        """
-        Parse the last share time from the string format to a timestamp.
-        :params last_share_time: The last share time string in the format "HH:MM:SS" or "0"
-        '0' means no shares have been submitted.
-        """
         if last_share_time != "0":
             try:
-                # Assuming the last share is in the format "YYYY-MM-DD HH:MM:SS"
                 now = datetime.now()
                 last_share_datetime = datetime.strptime(last_share_time, "%H:%M:%S")
                 last_share_datetime = last_share_datetime.replace(
@@ -558,6 +607,15 @@ class HashMasterMiner(HashMasterFirmware):
                         ),
                         accepted=pool_info.get("Accepted"),
                         rejected=pool_info.get("Rejected"),
+                        difficulty_accepted=pool_info.get(
+                            "Difficulty Accepted", pool_info.get("diffa")
+                        ),
+                        difficulty_rejected=pool_info.get(
+                            "Difficulty Rejected", pool_info.get("diffr")
+                        ),
+                        difficulty_stale=pool_info.get(
+                            "Difficulty Stale", pool_info.get("diffs")
+                        ),
                         get_failures=pool_info.get("Get Failures"),
                         remote_failures=pool_info.get("Remote Failures"),
                         active=pool_info.get("Stratum Active"),

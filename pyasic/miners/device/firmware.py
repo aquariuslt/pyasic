@@ -22,6 +22,10 @@ class StockFirmware(BaseMiner):
     firmware = MinerFirmware.STOCK
 
 
+class SpiderOSFirmware(BaseMiner):
+    firmware = MinerFirmware.SPIDER_OS
+
+
 class HashMasterFirmware(BaseMiner):
     firmware = MinerFirmware.HASHMASTER
 

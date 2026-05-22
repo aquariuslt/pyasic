@@ -27,6 +27,7 @@ from pyasic.device.algorithm import AlgoHashRate
 from pyasic.errors import APIError
 from pyasic.miners.backends.bmminer import BMMiner
 from pyasic.miners.backends.cgminer import CGMiner
+from pyasic.miners.backends.utils import normalize_antminer_like_serial_number
 from pyasic.miners.data import (
     DataFunction,
     DataLocations,
@@ -157,7 +158,9 @@ class AntminerModern(BMMiner):
                 logging.error(
                     f"Configuration lock update failed. Response: {error_message}"
                 )
-                raise ValueError(f"Configuration lock update failed. Response: {error_message}")
+                raise ValueError(
+                    f"Configuration lock update failed. Response: {error_message}"
+                )
         except Exception as e:
             logging.error(
                 f"An error occurred during the firmware upgrade process: {e}",
@@ -260,14 +263,18 @@ class AntminerModern(BMMiner):
                 pass
 
         if web_get_system_info is not None and "serinum" in web_get_system_info:
-            return web_get_system_info["serinum"]
+            return normalize_antminer_like_serial_number(web_get_system_info["serinum"])
 
         try:
             web_custom_api_result = await self.web.get_serial_number()
             if web_custom_api_result is not None and "serinum" in web_custom_api_result:
-                return web_custom_api_result["serinum"]
+                return normalize_antminer_like_serial_number(
+                    web_custom_api_result["serinum"]
+                )
         except APIError:
             pass
+
+        return None
 
     async def _get_wattage(self, web_get_system_info: dict = None) -> Optional[int]:
         if web_get_system_info is None:

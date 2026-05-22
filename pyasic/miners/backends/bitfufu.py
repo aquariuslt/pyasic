@@ -32,6 +32,7 @@ from pyasic.miners.data import (
     WebAPICommand,
 )
 from pyasic.miners.device.firmware import BitfufuFirmware
+from pyasic.miners.backends.utils import normalize_antminer_like_serial_number
 from pyasic.rpc.antminer import AntminerRPCAPI
 from pyasic.web.bitfufu import BitfufuAntminerWebAPI
 
@@ -283,14 +284,18 @@ class BitfufuMiner(BitfufuFirmware):
                 pass
 
         if web_get_system_info is not None and "serinum" in web_get_system_info:
-            return web_get_system_info["serinum"]
+            return normalize_antminer_like_serial_number(web_get_system_info["serinum"])
 
         try:
             web_custom_api_result = await self.web.get_serial_number()
             if web_custom_api_result is not None and "serinum" in web_custom_api_result:
-                return web_custom_api_result["serinum"]
+                return normalize_antminer_like_serial_number(
+                    web_custom_api_result["serinum"]
+                )
         except APIError:
             pass
+
+        return None
 
     async def _get_wattage(self, web_get_system_info: dict = None) -> Optional[int]:
         if web_get_system_info is None:

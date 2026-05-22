@@ -21,4 +21,5 @@ from .ccminer import CCMinerRPCAPI
 from .cgminer import CGMinerRPCAPI
 from .gcminer import GCMinerRPCAPI
 from .luxminer import LUXMinerRPCAPI
+from .spideros import SpiderOSRPCAPI
 from .unknown import UnknownRPCAPI

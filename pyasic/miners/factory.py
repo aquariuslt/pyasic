@@ -107,6 +107,10 @@ class HashMasterUnknown(HashMasterMiner, AntMinerMake):
     pass
 
 
+class SpiderOSUnknown(SpiderOSMiner, AntMinerMake):
+    pass
+
+
 class MinerTypes(enum.Enum):
     ANTMINER = 0
     WHATSMINER = 1
@@ -129,6 +133,7 @@ class MinerTypes(enum.Enum):
     MSKMINER = 18
     BITFUFU = 19
     HASHMASTER = 20
+    SPIDER_OS = 21
 
 
 MINER_CLASSES = {
@@ -651,6 +656,7 @@ MINER_CLASSES = {
         "ANTMINER S19I": VNishS19i,
         "ANTMINER S19 XP": VNishS19XP,
         "ANTMINER S19 XP HYD.": VNishS19XPHydro,
+        "ANTMINER S19 XP HYDRO": VNishS19XPHydro,
         "ANTMINER S19J PRO": VNishS19jPro,
         "ANTMINER S19J PRO A": VNishS19jPro,
         "ANTMINER S19J PRO BB": VNishS19jPro,
@@ -798,6 +804,26 @@ MINER_CLASSES = {
         "ANTMINER S19 XP HYD (HASHMASTER)": HashMasterS19XPHydro,
         "ANTMINER S19 XP+ HYD (HASHMASTER)": HashMasterS19XPPlusHydro,
     },
+    MinerTypes.SPIDER_OS: {
+        None: SpiderOSUnknown,
+        "ANTMINER S19 (SPOS)": SpiderOSS19,
+        "ANTMINER S19 PRO (SPOS)": SpiderOSS19Pro,
+        "ANTMINER S19J PRO (SPOS)": SpiderOSS19jPro,
+        "ANTMINER S19J PRO+ (SPOS)": SpiderOSS19jProPlus,
+        "ANTMINER S19K PRO (SPOS)": SpiderOSS19KPro,
+        "ANTMINER S19J XP (SPOS)": SpiderOSS19jXP,
+        "ANTMINER S19 XP (SPOS)": SpiderOSS19XP,
+        "ANTMINER S19 XP HYD (SPOS)": SpiderOSS19XPHydro,
+        "ANTMINER S19 PRO+ HYD (SPOS)": SpiderOSS19ProPlusHydro,
+        "ANTMINER S19 XP+ HYD (SPOS)": SpiderOSS19XPPlusHydro,
+        "ANTMINER S21 (SPOS)": SpiderOSS21,
+        "ANTMINER T21 (SPOS)": SpiderOST21,
+        "ANTMINER S21 XP (SPOS)": SpiderOSS21XP,
+        "ANTMINER S21+ HYD (SPOS)": SpiderOSS21PlusHydro,
+        "ANTMINER S21 HYD (SPOS)": SpiderOSS21Hydro,
+        "ANTMINER S21E HYD (SPOS)": SpiderOSS21EHydro,
+        "ANTMINER S21E XP HYD (SPOS)": SpiderOSS21EXPHydro,
+    },
 }
 
 
@@ -882,6 +908,7 @@ class MinerFactory:
                 MinerTypes.ELPHAPEX: self.get_miner_model_elphapex,
                 MinerTypes.BITFUFU: self.get_miner_model_bitfufu,
                 MinerTypes.HASHMASTER: self.get_miner_model_hash_master,
+                MinerTypes.SPIDER_OS: self.get_miner_model_spider_os,
             }
             fn = miner_model_fns.get(miner_type)
 
@@ -1100,6 +1127,11 @@ class MinerFactory:
                 pass
             else:
                 try:
+                    if "SPOS" in json_data["VERSION"][0]["TYPE"]:
+                        return MinerTypes.SPIDER_OS
+                except (KeyError, IndexError):
+                    pass
+                try:
                     if (json_data["VERSION"][0]["TYPE"]).endswith("EX"):
                         return MinerTypes.BITFUFU
                 except (KeyError, IndexError):
@@ -1259,6 +1291,13 @@ class MinerFactory:
         ]
 
         return await concurrent_get_first_result(tasks, lambda x: x is not None)
+
+    async def get_miner_model_spider_os(self, ip: str) -> str | None:
+        sock_json_data = await self.send_api_command(ip, "version")
+        try:
+            return sock_json_data["VERSION"][0]["Type"]
+        except (TypeError, LookupError):
+            pass
 
     async def _get_model_hash_master_web(self, ip: str) -> str | None:
         # last resort, this is slow
