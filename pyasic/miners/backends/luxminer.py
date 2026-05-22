@@ -13,7 +13,10 @@
 #  See the License for the specific language governing permissions and         -
 #  limitations under the License.                                              -
 # ------------------------------------------------------------------------------
+from __future__ import annotations
+
 import logging
+import math
 from typing import List, Optional
 
 from pyasic.config import MinerConfig
@@ -42,7 +45,10 @@ LUXMINER_DATA_LOC = DataLocations(
         ),
         str(DataOptions.HASHBOARDS): DataFunction(
             "_get_hashboards",
-            [RPCAPICommand("rpc_stats", "stats")],
+            [
+                RPCAPICommand("rpc_stats", "stats"),
+                RPCAPICommand("rpc_devdetails", "devdetails"),
+            ],
         ),
         str(DataOptions.WATTAGE): DataFunction(
             "_get_wattage",
@@ -68,6 +74,9 @@ LUXMINER_DATA_LOC = DataLocations(
         str(DataOptions.FW_VERSION): DataFunction(
             "_get_fw_ver", [RPCAPICommand("rpc_version", "version")]
         ),
+        str(DataOptions.SERIAL_NUMBER): DataFunction(
+            "_get_serial_number", [RPCAPICommand("rpc_config", "config")]
+        ),
         str(DataOptions.API_VERSION): DataFunction(
             "_get_api_ver", [RPCAPICommand("rpc_version", "version")]
         ),
@@ -89,6 +98,26 @@ class LUXMiner(LuxOSFirmware):
     supports_autotuning = True
 
     data_locations = LUXMINER_DATA_LOC
+
+    @staticmethod
+    def _parse_temperature_list(raw_value: str) -> list[float]:
+        temperatures = []
+        for value in raw_value.split("-"):
+            try:
+                temperature = float(value)
+            except ValueError:
+                continue
+            if temperature == 0 or math.isnan(temperature):
+                continue
+            temperatures.append(temperature)
+        return temperatures
+
+    @staticmethod
+    def _get_hashboard_slot_from_devdetails(devdetails: dict) -> int | None:
+        for key in ("ID", "DEVDETAILS"):
+            slot = devdetails.get(key)
+            if isinstance(slot, int):
+                return slot
 
     async def fault_light_on(self) -> bool:
         try:
@@ -224,6 +253,19 @@ class LUXMiner(LuxOSFirmware):
             except KeyError:
                 pass
 
+    async def _get_serial_number(self, rpc_config: dict = None) -> Optional[str]:
+        if rpc_config is None:
+            try:
+                rpc_config = await self.rpc.config()
+            except APIError:
+                pass
+
+        if rpc_config is not None:
+            try:
+                return rpc_config["CONFIG"][0]["SerialNumber"]
+            except LookupError:
+                pass
+
     async def _get_hashrate(self, rpc_summary: dict = None) -> Optional[AlgoHashRate]:
         if rpc_summary is None:
             try:
@@ -240,7 +282,9 @@ class LUXMiner(LuxOSFirmware):
             except (LookupError, ValueError, TypeError):
                 pass
 
-    async def _get_hashboards(self, rpc_stats: dict = None) -> List[HashBoard]:
+    async def _get_hashboards(
+        self, rpc_stats: dict = None, rpc_devdetails: dict = None
+    ) -> List[HashBoard]:
         if self.expected_hashboards is None:
             return []
 
@@ -254,6 +298,11 @@ class LUXMiner(LuxOSFirmware):
                 rpc_stats = await self.rpc.stats()
             except APIError:
                 pass
+        if rpc_devdetails is None:
+            try:
+                rpc_devdetails = await self.rpc.devdetails()
+            except APIError:
+                pass
         if rpc_stats is not None:
             try:
                 # TODO: bugged on S9 because of index issues, fix later.
@@ -265,27 +314,29 @@ class LUXMiner(LuxOSFirmware):
                         unit=self.algo.unit.GH,
                     ).into(self.algo.unit.default)
                     hashboards[idx].chips = int(board_stats[f"chain_acn{board_n}"])
-                    chip_temp_data = list(
-                        filter(
-                            lambda x: not x == 0,
-                            map(int, board_stats[f"temp_chip{board_n}"].split("-")),
+                    chip_temp_data = self._parse_temperature_list(
+                        board_stats[f"temp_chip{board_n}"]
+                    )
+                    if len(chip_temp_data) >= 4:
+                        hashboards[idx].chip_temp = (
+                            sum([chip_temp_data[0], chip_temp_data[3]]) / 2
                         )
+                    board_temp_data = self._parse_temperature_list(
+                        board_stats[f"temp_pcb{board_n}"]
                     )
-                    hashboards[idx].chip_temp = (
-                        sum([chip_temp_data[0], chip_temp_data[3]]) / 2
-                    )
-                    board_temp_data = list(
-                        filter(
-                            lambda x: not x == 0,
-                            map(int, board_stats[f"temp_pcb{board_n}"].split("-")),
+                    if len(board_temp_data) >= 3:
+                        hashboards[idx].temp = (
+                            sum([board_temp_data[1], board_temp_data[2]]) / 2
                         )
-                    )
-                    hashboards[idx].temp = (
-                        sum([board_temp_data[1], board_temp_data[2]]) / 2
-                    )
                     hashboards[idx].missing = False
             except LookupError:
                 pass
+        if rpc_devdetails:
+            for devdetails in rpc_devdetails.get("DEVDETAILS", []):
+                slot = self._get_hashboard_slot_from_devdetails(devdetails)
+                if slot is None or not 0 <= slot < len(hashboards):
+                    continue
+                hashboards[slot].serial_number = devdetails.get("SerialNumber")
         return hashboards
 
     async def _get_wattage(self, rpc_power: dict = None) -> Optional[int]:

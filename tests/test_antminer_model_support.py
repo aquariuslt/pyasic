@@ -29,6 +29,7 @@ from pyasic.miners.antminer.hashmaster.X21 import (
 )
 from pyasic.miners.antminer.hashmaster.X19 import HashMasterS19XPHydro
 from pyasic.miners.antminer.vnish.X19 import VNishS19XPHydro
+from pyasic.miners.antminer.luxos.X21 import LUXMinerS21PlusHydro
 from pyasic.miners.factory import MinerFactory, MinerTypes
 
 
@@ -63,6 +64,10 @@ HASHMASTER_MODEL_CASES = [
 
 VNISH_MODEL_CASES = [
     ("Antminer S19 XP Hydro", VNishS19XPHydro, "S19 XP Hydro"),
+]
+
+LUXOS_MODEL_CASES = [
+    ("Antminer S21+ Hydro", LUXMinerS21PlusHydro, "S21+ Hydro"),
 ]
 
 
@@ -134,6 +139,24 @@ def test_factory_supports_vnish_model_strings(
     assert isinstance(miner, expected_class)
     assert str(miner.raw_model) == expected_raw_model
     assert miner.firmware == MinerFirmware.VNISH
+
+
+@pytest.mark.parametrize(
+    ("miner_model", "expected_class", "expected_raw_model"),
+    LUXOS_MODEL_CASES,
+)
+def test_factory_supports_luxos_model_strings(
+    miner_model, expected_class, expected_raw_model
+):
+    miner = MinerFactory._select_miner_from_classes(
+        ip=ipaddress.ip_address("10.10.101.10"),
+        miner_model=miner_model,
+        miner_type=MinerTypes.LUX_OS,
+    )
+
+    assert isinstance(miner, expected_class)
+    assert str(miner.raw_model) == expected_raw_model
+    assert miner.firmware == MinerFirmware.LUXOS
 
 
 def test_hashmaster_miner_reads_fw_version_from_rpc_version():

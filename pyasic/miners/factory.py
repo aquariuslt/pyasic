@@ -38,7 +38,10 @@ from pyasic.miners.antminer.bmminer.X21.S21 import (
     BMMinerS21EXPHydro,
     BMMinerS21XPHydro,
 )
-from pyasic.miners.antminer.luxos.X21.S21 import LUXMinerS21Hydro
+from pyasic.miners.antminer.luxos.X21.S21 import (
+    LUXMinerS21Hydro,
+    LUXMinerS21PlusHydro,
+)
 from pyasic.miners.auradine import *
 from pyasic.miners.avalonminer import *
 from pyasic.miners.backends import *
@@ -716,6 +719,7 @@ MINER_CLASSES = {
         "ANTMINER S19 XP": LUXMinerS19XP,
         "ANTMINER T19": LUXMinerT19,
         "ANTMINER S21": LUXMinerS21,
+        "ANTMINER S21+ HYDRO": LUXMinerS21PlusHydro,
         "ANTMINER S21 HYDRO": LUXMinerS21Hydro,
         "ANTMINER T21": LUXMinerT21,
     },
