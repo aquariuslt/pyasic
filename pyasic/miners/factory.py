@@ -805,6 +805,7 @@ MINER_CLASSES = {
         "ANTMINER S21E XP HYD (HASHMASTER)": HashMasterS21EXPHydro,
         "ANTMINER S21 XP (HASHMASTER)": HashMasterS21XP,
         "ANTMINER S21+ HYD (HASHMASTER)": HashMasterS21PlusHydro,
+        "ANTMINER T21 (HASHMASTER)": HashMasterT21,
         "ANTMINER S19 XP HYD (HASHMASTER)": HashMasterS19XPHydro,
         "ANTMINER S19 XP+ HYD (HASHMASTER)": HashMasterS19XPPlusHydro,
     },

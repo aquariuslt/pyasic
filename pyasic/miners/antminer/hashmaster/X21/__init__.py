@@ -4,4 +4,5 @@ from .S21 import (
     HashMasterS21Hydro,
     HashMasterS21PlusHydro,
     HashMasterS21XP,
+    HashMasterT21,
 )
