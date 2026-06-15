@@ -18,7 +18,12 @@ from pyasic.miners.data import (
     WebAPICommand,
 )
 from pyasic.miners.device.firmware import SpiderOSFirmware
-from pyasic.miners.backends.utils import normalize_antminer_like_serial_number
+from pyasic.miners.backends.utils import (
+    apply_antminer_temperature_layout,
+    build_antminer_temperature_raw,
+    get_antminer_temperature_layout,
+    normalize_antminer_like_serial_number,
+)
 from pyasic.rpc.spideros import SpiderOSRPCAPI
 from pyasic.ssh.antminer import AntminerModernSSH
 from pyasic.web.spideros import SpiderOSWebAPI
@@ -91,7 +96,6 @@ SPIDER_OS_DATA_LOC = DataLocations(
 
 
 class SpiderOSMiner(SpiderOSFirmware):
-    uses_extended_hydro_temp_layout = False
 
     _web_cls = SpiderOSWebAPI
     web: SpiderOSWebAPI
@@ -362,44 +366,14 @@ class SpiderOSMiner(SpiderOSFirmware):
                     ).into(self.algo.unit.default)
                     hashboards[board["index"]].chips = board["asic_num"]
 
-                    if self.uses_extended_hydro_temp_layout:
-                        hashboards[board["index"]].inlet_temp = board["temp_pcb"][0]
-                        hashboards[board["index"]].outlet_temp = board["temp_pcb"][2]
-                        hashboards[board["index"]].chip_temp = board["temp_pic"][0]
-                        board_temp_data = list(
-                            filter(
-                                lambda x: x != 0,
-                                [
-                                    board["temp_pic"][1],
-                                    board["temp_pic"][2],
-                                    board["temp_pic"][3],
-                                    board["temp_pcb"][1],
-                                    board["temp_pcb"][3],
-                                ],
-                            )
-                        )
-                        hashboards[board["index"]].temp = (
-                            sum(board_temp_data) / len(board_temp_data)
-                            if len(board_temp_data) > 0
-                            else 0
-                        )
-                    else:
-                        board_temp_data = list(
-                            filter(lambda x: x != 0, board["temp_pcb"])
-                        )
-                        hashboards[board["index"]].temp = (
-                            sum(board_temp_data) / len(board_temp_data)
-                            if len(board_temp_data) > 0
-                            else 0
-                        )
-                        chip_temp_data = list(
-                            filter(lambda x: x != 0, board["temp_chip"])
-                        )
-                        hashboards[board["index"]].chip_temp = (
-                            sum(chip_temp_data) / len(chip_temp_data)
-                            if len(chip_temp_data) > 0
-                            else 0
-                        )
+                    apply_antminer_temperature_layout(
+                        hashboards[board["index"]],
+                        board,
+                        get_antminer_temperature_layout(
+                            self.raw_model,
+                            self.firmware,
+                        ),
+                    )
 
                     hashboards[board["index"]].serial_number = board["sn"]
                     hashboards[board["index"]].missing = False
@@ -407,6 +381,13 @@ class SpiderOSMiner(SpiderOSFirmware):
             except LookupError:
                 pass
         return hashboards
+
+    async def _get_temperature_raw(self) -> list[dict]:
+        try:
+            rpc_stats = await self.rpc.stats(new_api=True)
+        except APIError:
+            return []
+        return build_antminer_temperature_raw("spideros", rpc_stats)
 
     async def _get_fans(self, rpc_stats: dict = None) -> List[Fan]:
         if self.expected_fans is None:

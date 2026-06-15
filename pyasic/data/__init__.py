@@ -55,7 +55,10 @@ class MinerData(BaseModel):
         expected_hashrate: The factory nominal hashrate of the miner in TH/s as a float.
         sticker_hashrate: The factory sticker hashrate of the miner as a float.
         hashboards: A list of [`HashBoard`][pyasic.data.HashBoard]s on the miner with their statistics.
+        temperature_raw: Raw temperature arrays collected from miner hashboard stats.
         temperature_avg: The average temperature across the boards.  Calculated automatically.
+        temperature_inlet_avg: The average inlet temperature across the boards.  Calculated automatically.
+        temperature_outlet_avg: The average outlet temperature across the boards.  Calculated automatically.
         env_temp: The environment temps as a float.
         wattage: Current power draw of the miner as an int.
         voltage: Current output voltage of the PSU as an float.
@@ -120,6 +123,7 @@ class MinerData(BaseModel):
 
     # boards
     hashboards: list[HashBoard] = Field(default_factory=list)
+    temperature_raw: list[dict[str, Any]] = Field(default_factory=list)
 
     # config
     config: MinerConfig | None = None
@@ -300,6 +304,26 @@ class MinerData(BaseModel):
             return None
         return round(total_temp / temp_count)
 
+    def _hashboard_temperature_avg(self, field_name: str) -> float | None:
+        temps = [
+            value
+            for hb in self.hashboards
+            if (value := getattr(hb, field_name, None)) is not None and value != 0
+        ]
+        if not temps:
+            return None
+        return sum(temps) / len(temps)
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def temperature_inlet_avg(self) -> float | None:
+        return self._hashboard_temperature_avg("inlet_temp")
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def temperature_outlet_avg(self) -> float | None:
+        return self._hashboard_temperature_avg("outlet_temp")
+
     @computed_field  # type: ignore[misc]
     @property
     def efficiency(self) -> int | None:
@@ -462,6 +486,8 @@ class MinerData(BaseModel):
             "hashrate",
             "hashboards",
             "temperature_avg",
+            "temperature_inlet_avg",
+            "temperature_outlet_avg",
             "env_temp",
             "wattage",
             "wattage_limit",

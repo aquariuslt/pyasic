@@ -29,6 +29,7 @@ class DataOptions(Enum):
     HASHRATE = "hashrate"
     EXPECTED_HASHRATE = "expected_hashrate"
     HASHBOARDS = "hashboards"
+    TEMPERATURE_RAW = "temperature_raw"
     ENVIRONMENT_TEMP = "env_temp"
     WATTAGE = "wattage"
     WATTAGE_LIMIT = "wattage_limit"

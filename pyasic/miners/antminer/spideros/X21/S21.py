@@ -18,16 +18,16 @@ class SpiderOSS21XP(SpiderOSMiner, S21XP):
 
 
 class SpiderOSS21PlusHydro(SpiderOSMiner, S21PlusHydro):
-    uses_extended_hydro_temp_layout = True
+    pass
 
 
 class SpiderOSS21Hydro(SpiderOSMiner, S21Hydro):
-    uses_extended_hydro_temp_layout = False
+    pass
 
 
 class SpiderOSS21EHydro(SpiderOSMiner, S21EHydro):
-    uses_extended_hydro_temp_layout = False
+    pass
 
 
 class SpiderOSS21EXPHydro(SpiderOSMiner, S21EXPHydro):
-    uses_extended_hydro_temp_layout = False
+    pass

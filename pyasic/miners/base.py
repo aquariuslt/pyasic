@@ -462,6 +462,9 @@ class MinerProtocol(Protocol):
     async def _get_pools(self) -> List[PoolMetrics]:
         pass
 
+    async def _get_temperature_raw(self) -> list[dict]:
+        return []
+
     async def _get_data(
         self,
         allow_warning: bool,

@@ -27,7 +27,12 @@ from pyasic.device.algorithm import AlgoHashRate
 from pyasic.errors import APIError
 from pyasic.miners.backends.bmminer import BMMiner
 from pyasic.miners.backends.cgminer import CGMiner
-from pyasic.miners.backends.utils import normalize_antminer_like_serial_number
+from pyasic.miners.backends.utils import (
+    apply_antminer_temperature_layout,
+    build_antminer_temperature_raw,
+    get_antminer_temperature_layout,
+    normalize_antminer_like_serial_number,
+)
 from pyasic.miners.data import (
     DataFunction,
     DataLocations,
@@ -368,45 +373,14 @@ class AntminerModern(BMMiner):
                     ).into(self.algo.unit.default)
                     hashboards[board["index"]].chips = board["asic_num"]
 
-                    if "S21+ Hyd" in self.model:
-                        hashboards[board["index"]].inlet_temp = board["temp_pcb"][0]
-                        hashboards[board["index"]].outlet_temp = board["temp_pcb"][2]
-                        hashboards[board["index"]].chip_temp = board["temp_pic"][0]
-                        board_temp_data = list(
-                            filter(
-                                lambda x: not x == 0,
-                                [
-                                    board["temp_pic"][1],
-                                    board["temp_pic"][2],
-                                    board["temp_pic"][3],
-                                    board["temp_pcb"][1],
-                                    board["temp_pcb"][3],
-                                ],
-                            )
-                        )
-                        hashboards[board["index"]].temp = (
-                            sum(board_temp_data) / len(board_temp_data)
-                            if len(board_temp_data) > 0
-                            else 0
-                        )
-
-                    else:
-                        board_temp_data = list(
-                            filter(lambda x: not x == 0, board["temp_pcb"])
-                        )
-                        hashboards[board["index"]].temp = (
-                            sum(board_temp_data) / len(board_temp_data)
-                            if len(board_temp_data) > 0
-                            else 0
-                        )
-                        chip_temp_data = list(
-                            filter(lambda x: not x == 0, board["temp_chip"])
-                        )
-                        hashboards[board["index"]].chip_temp = (
-                            sum(chip_temp_data) / len(chip_temp_data)
-                            if len(chip_temp_data) > 0
-                            else 0
-                        )
+                    apply_antminer_temperature_layout(
+                        hashboards[board["index"]],
+                        board,
+                        get_antminer_temperature_layout(
+                            self.raw_model,
+                            self.firmware,
+                        ),
+                    )
 
                     hashboards[board["index"]].serial_number = board["sn"]
                     hashboards[board["index"]].missing = False
@@ -414,6 +388,13 @@ class AntminerModern(BMMiner):
             except LookupError:
                 pass
         return hashboards
+
+    async def _get_temperature_raw(self) -> list[dict]:
+        try:
+            rpc_stats = await self.rpc.stats(new_api=True)
+        except APIError:
+            return []
+        return build_antminer_temperature_raw("antminer", rpc_stats)
 
     async def _get_fault_light(
         self, web_get_blink_status: dict = None

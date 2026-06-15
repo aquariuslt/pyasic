@@ -42,12 +42,12 @@ class SpiderOSS19XP(SpiderOSMiner, S19XP):
 
 
 class SpiderOSS19XPHydro(SpiderOSMiner, S19XPHydro):
-    uses_extended_hydro_temp_layout = False
+    pass
 
 
 class SpiderOSS19ProPlusHydro(SpiderOSMiner, S19ProPlusHydro):
-    uses_extended_hydro_temp_layout = False
+    pass
 
 
 class SpiderOSS19XPPlusHydro(SpiderOSMiner, S19XPPlusHydro):
-    uses_extended_hydro_temp_layout = False
+    pass
