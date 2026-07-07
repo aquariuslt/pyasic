@@ -104,6 +104,7 @@ class MinersTest(unittest.TestCase):
                 "wattage_limit",
                 "pools",
                 "psus",
+                "temperature_raw",
             ]
         )
         warnings.filterwarnings("ignore")

@@ -7,3 +7,15 @@ pyvenv.cfg
 bin/
 lib/
 .idea/
+
+# macOS
+.DS_Store
+
+# uv
+uv.lock
+.venv/
+
+# tooling
+.claude/
+
+tests/nvdata/

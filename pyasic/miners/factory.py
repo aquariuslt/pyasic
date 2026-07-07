@@ -787,6 +787,7 @@ MINER_CLASSES = {
     MinerTypes.BITFUFU: {
         None: BitfufuUnknown,
         "ANTMINER S21 EX": BitfufuS21Ex,
+        "ANTMINER S21 HYD EX": BitfufuS21HydroEx,
         "ANTMINER T21 EX": BitfufuT21Ex,
         "ANTMINER S19K PRO EX": BitfufuS19KProEx,
         "ANTMINER S19J PRO+ EX": BitfufuS19jProPlusEx,
