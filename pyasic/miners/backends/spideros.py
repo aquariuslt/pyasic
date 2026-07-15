@@ -1,4 +1,5 @@
 import logging
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
@@ -556,17 +557,20 @@ class SpiderOSMiner(SpiderOSFirmware):
 
     @staticmethod
     def _parse_last_share_to_timestamp(last_share_time: str) -> int:
-        if last_share_time != "0":
-            try:
-                now = datetime.now()
-                last_share_datetime = datetime.strptime(last_share_time, "%H:%M:%S")
-                last_share_datetime = last_share_datetime.replace(
-                    year=now.year, month=now.month, day=now.day
-                )
-                return int(last_share_datetime.timestamp())
-            except ValueError:
-                logging.debug(f"Failed to parse last share time: {last_share_time}")
-        return 0
+        """
+        Parse the last share time (elapsed since last share) to a unix timestamp.
+        :params last_share_time: elapsed time in ``HH:MM:SS`` since the last share,
+            e.g. ``"00:00:07"`` means the last share happened 7 seconds ago.
+            ``"0"`` means no shares have been submitted.
+        """
+        if last_share_time == "0":
+            return 0
+        try:
+            h, m, s = (int(x) for x in last_share_time.split(":"))
+            return int(time.time()) - (h * 3600 + m * 60 + s)
+        except (ValueError, AttributeError):
+            logging.debug(f"Failed to parse last share time: {last_share_time}")
+            return 0
 
     async def _get_pools(self, rpc_pools: dict = None) -> List[PoolMetrics]:
         if rpc_pools is None:
