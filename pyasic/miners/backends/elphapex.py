@@ -26,6 +26,7 @@ from pyasic.miners.data import (
     DataOptions,
     WebAPICommand,
 )
+from pyasic.miners.backends.utils import parse_last_share_to_timestamp
 from pyasic.miners.device.firmware import StockFirmware
 from pyasic.web.elphapex import ElphapexWebAPI
 
@@ -363,8 +364,14 @@ class ElphapexMiner(StockFirmware):
                 for pool_info in web_pools["POOLS"]:
                     url = pool_info.get("url")
                     pool_url = PoolUrl.from_str(url) if url else None
+                    accepted = pool_info.get("accepted")
                     pool_data = PoolMetrics(
-                        accepted=pool_info.get("accepted"),
+                        last_share_ts=(
+                            parse_last_share_to_timestamp(pool_info.get("lstime", ""))
+                            if accepted
+                            else 0
+                        ),
+                        accepted=accepted,
                         rejected=pool_info.get("rejected"),
                         get_failures=pool_info.get("stale"),
                         remote_failures=pool_info.get("discarded"),

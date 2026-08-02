@@ -15,7 +15,6 @@
 # ------------------------------------------------------------------------------
 
 import logging
-import time
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
@@ -29,6 +28,7 @@ from pyasic.errors import APIError
 from pyasic.miners.backends.bmminer import BMMiner
 from pyasic.miners.backends.cgminer import CGMiner
 from pyasic.miners.backends.utils import (
+    parse_last_share_to_timestamp,
     apply_antminer_temperature_layout,
     build_antminer_temperature_raw,
     get_antminer_temperature_layout,
@@ -111,6 +111,10 @@ ANTMINER_MODERN_DATA_LOC = DataLocations(
             "_get_pools",
             [RPCAPICommand("rpc_pools", "pools")],
         ),
+        str(DataOptions.CONFIG): DataFunction(
+            "_get_config",
+            [WebAPICommand("web_get_conf", "get_miner_conf")],
+        ),
     }
 )
 
@@ -133,9 +137,16 @@ class AntminerModern(BMMiner):
     supports_power_modes = True
 
     async def get_config(self) -> MinerConfig:
-        data = await self.web.get_miner_conf()
-        if data:
-            self.config = MinerConfig.from_am_modern(data)
+        return await self._get_config()
+
+    async def _get_config(self, web_get_conf: dict = None) -> MinerConfig:
+        if web_get_conf is None:
+            try:
+                web_get_conf = await self.web.get_miner_conf()
+            except APIError:
+                pass
+        if web_get_conf:
+            self.config = MinerConfig.from_am_modern(web_get_conf)
         return self.config
 
     async def send_config(self, config: MinerConfig, user_suffix: str = None) -> None:
@@ -518,23 +529,6 @@ class AntminerModern(BMMiner):
             except LookupError:
                 pass
 
-    @staticmethod
-    def _parse_last_share_to_timestamp(last_share_time: str) -> int:
-        """
-        Parse the last share time (elapsed since last share) to a unix timestamp.
-        :params last_share_time: elapsed time in ``HH:MM:SS`` since the last share,
-            e.g. ``"00:00:07"`` means the last share happened 7 seconds ago.
-            ``"0"`` means no shares have been submitted.
-        """
-        if last_share_time == "0":
-            return 0
-        try:
-            h, m, s = (int(x) for x in last_share_time.split(":"))
-            return int(time.time()) - (h * 3600 + m * 60 + s)
-        except (ValueError, AttributeError):
-            logging.debug(f"Failed to parse last share time: {last_share_time}")
-            return 0
-
     async def _get_pools(self, rpc_pools: dict = None) -> List[PoolMetrics]:
         if rpc_pools is None:
             try:
@@ -550,7 +544,7 @@ class AntminerModern(BMMiner):
                     url = pool_info.get("URL")
                     pool_url = PoolUrl.from_str(url) if url else None
                     pool_data = PoolMetrics(
-                        last_share_ts=self._parse_last_share_to_timestamp(
+                        last_share_ts=parse_last_share_to_timestamp(
                             pool_info.get("Last Share Time", "0")
                         ),
                         accepted=pool_info.get("Accepted"),

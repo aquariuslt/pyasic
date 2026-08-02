@@ -157,3 +157,31 @@ def test_antminer_s19_xp_plus_hydro_hashboards_parse_issue_temp_layout(
     assert hashboards[0].outlet_temp == 47
     assert hashboards[0].chip_temp is None
     assert hashboards[0].temp == 54.5
+
+
+def test_antminer_modern_get_config_uses_injected_conf_without_web_call(monkeypatch):
+    miner = BMMinerS19XP("10.10.101.10")
+    get_miner_conf = AsyncMock(side_effect=AssertionError("web should not be called"))
+    monkeypatch.setattr(miner.web, "get_miner_conf", get_miner_conf)
+
+    web_get_conf = {
+        "pools": [
+            {
+                "url": "stratum+tcp://ss.antpool.com:3333",
+                "user": "worker.001",
+                "pass": "x",
+            }
+        ],
+        "bitmain-fan-ctrl": False,
+        "bitmain-fan-pwm": "100",
+        "bitmain-work-mode": "0",
+        "bitmain-freq": "675",
+        "bitmain-voltage": "1400",
+    }
+
+    config = asyncio.run(miner._get_config(web_get_conf))
+
+    get_miner_conf.assert_not_awaited()
+    pool = config.pools.groups[0].pools[0]
+    assert str(pool.url) == "stratum+tcp://ss.antpool.com:3333"
+    assert pool.user == "worker.001"

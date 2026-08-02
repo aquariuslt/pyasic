@@ -123,6 +123,14 @@ BTMINER_DATA_LOC = DataLocations(
             "_get_psus",
             [RPCAPICommand("rpc_get_psu", "get_psu")],
         ),
+        str(DataOptions.CONFIG): DataFunction(
+            "_get_config",
+            [
+                RPCAPICommand("rpc_pools", "pools"),
+                RPCAPICommand("rpc_summary", "summary"),
+                RPCAPICommand("rpc_status", "status"),
+            ],
+        ),
     }
 )
 
@@ -253,23 +261,35 @@ class BTMiner(StockFirmware):
             raise LookupError("No SUMMARY or Msg in summary data")
 
     async def get_config(self) -> MinerConfig:
-        pools = None
-        summary = None
-        status = None
-        try:
-            data = await self.rpc.multicommand("pools", "summary", "status")
-            if "POOLS" in data:
-                pools = {"POOLS": data["POOLS"]}
-            elif "pools" in data:
-                pools = data["pools"][0]
-            else:
-                raise LookupError("No pools data found")
-            summary = data["summary"][0]
-            status = data["status"][0]
-        except APIError as e:
-            logging.warning(e)
-        except LookupError:
-            pass
+        return await self._get_config()
+
+    async def _get_config(
+        self,
+        rpc_pools: dict = None,
+        rpc_summary: dict = None,
+        rpc_status: dict = None,
+    ) -> MinerConfig:
+        pools = rpc_pools
+        summary = rpc_summary
+        status = rpc_status
+        if pools is None or summary is None or status is None:
+            try:
+                data = await self.rpc.multicommand("pools", "summary", "status")
+                if pools is None:
+                    if "POOLS" in data:
+                        pools = {"POOLS": data["POOLS"]}
+                    elif "pools" in data:
+                        pools = data["pools"][0]
+                    else:
+                        raise LookupError("No pools data found")
+                if summary is None:
+                    summary = data["summary"][0]
+                if status is None:
+                    status = data["status"][0]
+            except APIError as e:
+                logging.warning(e)
+            except LookupError:
+                pass
 
         if pools is not None:
             cfg = MinerConfig.from_api(pools)
@@ -767,7 +787,8 @@ class BTMiner(StockFirmware):
                     url = pool_info.get("URL")
                     pool_url = PoolUrl.from_str(url) if url else None
                     pool_data = PoolMetrics(
-                        last_share_ts=pool_info.get("Last Share Time", 0),
+                        # None = firmware does not report the field, 0 = no share yet
+                        last_share_ts=pool_info.get("Last Share Time"),
                         accepted=pool_info.get("Accepted"),
                         rejected=pool_info.get("Rejected"),
                         get_failures=pool_info.get("Get Failures"),

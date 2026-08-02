@@ -26,6 +26,7 @@ from pyasic.data.pools import PoolMetrics, PoolUrl
 from pyasic.device.algorithm import AlgoHashRate
 from pyasic.errors import APIError
 from pyasic.miners.data import DataFunction, DataLocations, DataOptions, RPCAPICommand
+from pyasic.miners.backends.utils import parse_last_share_to_timestamp
 from pyasic.miners.device.firmware import LuxOSFirmware
 from pyasic.rpc.luxminer import LUXMinerRPCAPI
 
@@ -471,9 +472,23 @@ class LUXMiner(LuxOSFirmware):
                 for pool_info in pools:
                     url = pool_info.get("URL")
                     pool_url = PoolUrl.from_str(url) if url else None
+                    accepted = pool_info.get("Accepted")
                     pool_data = PoolMetrics(
-                        accepted=pool_info.get("Accepted"),
+                        # LuxOS reports elapsed-since-boot for pools that never
+                        # submitted a share, so the value is only valid with
+                        # at least one accepted share
+                        last_share_ts=(
+                            parse_last_share_to_timestamp(
+                                pool_info.get("Last Share Time", "0")
+                            )
+                            if accepted
+                            else 0
+                        ),
+                        accepted=accepted,
                         rejected=pool_info.get("Rejected"),
+                        difficulty_accepted=pool_info.get("Difficulty Accepted"),
+                        difficulty_rejected=pool_info.get("Difficulty Rejected"),
+                        difficulty_stale=pool_info.get("Difficulty Stale"),
                         get_failures=pool_info.get("Get Failures"),
                         remote_failures=pool_info.get("Remote Failures"),
                         active=pool_info.get("Stratum Active"),

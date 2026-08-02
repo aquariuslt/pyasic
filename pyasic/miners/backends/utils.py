@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+import time
 from dataclasses import dataclass
 from typing import Any
 
@@ -15,6 +17,24 @@ _INVALID_SERIAL_NUMBER_VALUES = {
     "null",
     "unknown",
 }
+
+
+def parse_last_share_to_timestamp(last_share_time: str) -> int:
+    """
+    Parse the last share time (elapsed since last share) to a unix timestamp.
+    :params last_share_time: elapsed time in ``HH:MM:SS`` since the last share,
+        e.g. ``"00:00:07"`` means the last share happened 7 seconds ago.
+        Hours may exceed 24 (e.g. ``"68:40:44"``).
+        ``"0"``, an empty string or ``None`` means no shares have been submitted.
+    """
+    if not last_share_time or last_share_time == "0":
+        return 0
+    try:
+        h, m, s = (int(x) for x in last_share_time.split(":"))
+        return int(time.time()) - (h * 3600 + m * 60 + s)
+    except (ValueError, AttributeError):
+        logging.debug(f"Failed to parse last share time: {last_share_time}")
+        return 0
 
 
 def normalize_antminer_like_serial_number(serial_number: Any) -> str | None:
