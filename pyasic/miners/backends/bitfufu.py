@@ -269,8 +269,16 @@ class BitfufuMiner(BitfufuFirmware):
                 for pool_info in pools:
                     url = pool_info.get("URL")
                     pool_url = PoolUrl.from_str(url) if url else None
+                    accepted = pool_info.get("Accepted")
                     pool_data = PoolMetrics(
-                        accepted=pool_info.get("Accepted"),
+                        last_share_ts=(
+                            parse_last_share_to_timestamp(
+                                pool_info.get("Last Share Time", "0")
+                            )
+                            if accepted
+                            else 0
+                        ),
+                        accepted=accepted,
                         rejected=pool_info.get("Rejected"),
                         get_failures=pool_info.get("Get Failures"),
                         remote_failures=pool_info.get("Remote Failures"),
