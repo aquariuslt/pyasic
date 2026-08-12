@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from pyasic.data.boards import HashBoard
+from pyasic.data.network import MinerNetworkConfig, NetworkMode
 from pyasic.device.firmware import MinerFirmware
 from pyasic.device.models import MinerModel
 
@@ -320,3 +321,106 @@ def build_antminer_temperature_raw(
         temperature_raw.append(item)
 
     return temperature_raw
+
+
+def clean_network_value(value: Any) -> str | None:
+    """Normalize one network field, treating an empty string as nothing set."""
+    if isinstance(value, list):
+        value = ";".join(str(item) for item in value if item)
+    if not isinstance(value, str):
+        return None
+    stripped = value.strip()
+    return stripped if stripped else None
+
+
+def require_static_network_fields(**fields: Any) -> None:
+    """Raise a ValueError naming every static field the caller left out."""
+    missing = [name for name, value in fields.items() if not value]
+    if missing:
+        raise ValueError(f"Static network configuration requires {', '.join(missing)}.")
+
+
+def parse_bitmain_network_info(
+    web_get_network_info: dict | None,
+) -> MinerNetworkConfig | None:
+    """Build a network config from the Bitmain style ``get_network_info`` payload.
+
+    The ``conf_*`` fields hold the static configuration rather than what is in
+    effect, so in DHCP mode they are empty and the runtime ``ipaddress`` and
+    ``netmask`` are read instead.
+    """
+    if not web_get_network_info:
+        return None
+
+    mode = None
+    raw_mode = clean_network_value(web_get_network_info.get("conf_nettype"))
+    if raw_mode is None:
+        raw_mode = clean_network_value(web_get_network_info.get("nettype"))
+    if raw_mode is not None:
+        try:
+            mode = NetworkMode(raw_mode.lower())
+        except ValueError:
+            mode = None
+
+    return MinerNetworkConfig(
+        mode=mode,
+        ip=clean_network_value(web_get_network_info.get("ipaddress")),
+        netmask=clean_network_value(web_get_network_info.get("netmask")),
+        gateway=clean_network_value(web_get_network_info.get("conf_gateway")),
+        dns=clean_network_value(web_get_network_info.get("conf_dnsservers")),
+        hostname=clean_network_value(web_get_network_info.get("conf_hostname")),
+    )
+
+
+def is_bitmain_write_success(response: Any) -> bool:
+    """Interpret the response of a Bitmain style network write.
+
+    A successful write answers ``{"stats": "success", "code": "N000", "msg": "OK!"}``.
+    The web layer turns transport failures into ``{"success": False, ...}`` instead
+    of raising, so that shape counts as a failure as well.
+    """
+    if not isinstance(response, dict):
+        return False
+    if response.get("success") is False:
+        return False
+
+    stats = response.get("stats")
+    if isinstance(stats, str) and stats.strip().lower() == "success":
+        return True
+
+    code = response.get("code")
+    return isinstance(code, str) and code.strip().upper() == "N000"
+
+
+def build_bitmain_network_conf(
+    mode: NetworkMode | str,
+    ip: str | None = None,
+    netmask: str | None = None,
+    gateway: str | None = None,
+    dns: str | None = None,
+    hostname: str | None = None,
+) -> dict[str, Any]:
+    """Build the arguments for a Bitmain style ``set_network_conf`` call.
+
+    ``protocol`` is 1 for DHCP and 2 for static.  DHCP sends the address fields
+    empty, matching the stock web interface.
+    """
+    if NetworkMode(mode) is NetworkMode.DHCP:
+        return {
+            "ip": "",
+            "dns": "",
+            "gateway": "",
+            "subnet_mask": "",
+            "hostname": hostname or "",
+            "protocol": 1,
+        }
+
+    require_static_network_fields(ip=ip, netmask=netmask, gateway=gateway)
+    return {
+        "ip": ip,
+        "dns": dns or "",
+        "gateway": gateway,
+        "subnet_mask": netmask,
+        "hostname": hostname or "",
+        "protocol": 2,
+    }

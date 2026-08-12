@@ -30,6 +30,7 @@ from .device import DeviceInfo
 from .error_codes import BraiinsOSError, InnosiliconError, WhatsminerError, X19Error
 from .error_codes.base import BaseMinerError
 from .fans import Fan
+from .network import MinerNetworkConfig, NetworkMode
 from .power_supplies import PowerSupply
 
 
@@ -51,6 +52,7 @@ class MinerData(BaseModel):
         hostname: The network hostname of the miner as a str.
         control_board: The control board model/subtype of the miner as a str.
         serial_number: Serial number of the miner as a str.
+        network: The network configuration of the miner as a MinerNetworkConfig.
         hashrate: The hashrate of the miner in TH/s as a float.  Calculated automatically.
         expected_hashrate: The factory nominal hashrate of the miner in TH/s as a float.
         sticker_hashrate: The factory sticker hashrate of the miner as a float.
@@ -95,6 +97,7 @@ class MinerData(BaseModel):
     hostname: str | None = None
     control_board: str | None = None
     serial_number: str | None = None
+    network: MinerNetworkConfig | None = None
 
     # hashrate
     raw_hashrate: AlgoHashRateType = Field(exclude=True, default=None, repr=False)

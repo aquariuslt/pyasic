@@ -30,6 +30,19 @@ POOLS = [
 
 data = {
     ElphapexDG1Plus: {
+        "web_get_network_info": {
+            "conf_netmask": "",
+            "conf_nettype": "DHCP",
+            "ipaddress": "172.19.203.183",
+            "netmask": "255.255.255.0",
+            "conf_dnsservers": "",
+            "conf_gateway": "",
+            "nettype": "DHCP",
+            "netdevice": "eth0",
+            "macaddr": "12:34:56:78:90:12",
+            "conf_ipaddress": "",
+            "conf_hostname": "DG1+",
+        },
         "web_get_system_info": {
             "ipaddress": "172.19.203.183",
             "system_mode": "GNU/Linux",

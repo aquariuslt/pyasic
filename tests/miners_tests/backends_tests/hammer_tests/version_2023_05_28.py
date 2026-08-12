@@ -29,6 +29,19 @@ POOLS = [
 
 data = {
     HammerD10: {
+        "web_get_network_info": {
+            "nettype": "DHCP",
+            "netdevice": "eth0",
+            "macaddr": "12:34:56:78:90:12",
+            "ipaddress": "10.0.0.1",
+            "netmask": "255.255.255.0",
+            "conf_nettype": "DHCP",
+            "conf_hostname": "Hammer",
+            "conf_ipaddress": "",
+            "conf_netmask": "",
+            "conf_gateway": "",
+            "conf_dnsservers": "",
+        },
         "web_get_system_info": {
             "minertype": "Hammer D10",
             "nettype": "DHCP",

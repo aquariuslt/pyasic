@@ -156,6 +156,38 @@ class BitfufuAntminerWebAPI(BaseWebAPI):
         """
         return await self.send_command("get_network_info")
 
+    async def set_network_conf(
+        self,
+        ip: str,
+        dns: str,
+        gateway: str,
+        subnet_mask: str,
+        hostname: str,
+        protocol: int,
+    ) -> dict:
+        """Set the network configuration of the miner.
+
+        Args:
+            ip (str): IP address of the device.
+            dns (str): DNS server IP address.
+            gateway (str): Gateway IP address.
+            subnet_mask (str): Network subnet mask.
+            hostname (str): Hostname of the device.
+            protocol (int): Network protocol used, 1 for DHCP and 2 for static.
+
+        Returns:
+            dict: A dictionary response from the device after setting the network configuration.
+        """
+        return await self.send_command(
+            "set_network_conf",
+            ipAddress=ip,
+            ipDns=dns,
+            ipGateway=gateway,
+            ipHost=hostname,
+            ipPro=protocol,
+            ipSub=subnet_mask,
+        )
+
     async def _download_current_logs(self) -> dict | None:
         command = "hlog"
         url = f"http://{self.ip}:{self.port}/cgi-bin/{command}.cgi"

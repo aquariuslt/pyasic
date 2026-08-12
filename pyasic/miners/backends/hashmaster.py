@@ -7,6 +7,7 @@ from pyasic.data import HashBoard, X19Error, Fan
 from pyasic.data.error_codes import MinerErrorData
 from pyasic.data.pools import PoolMetrics, PoolUrl
 from pyasic.device.algorithm import AlgoHashRate
+from pyasic.data.network import MinerNetworkConfig, NetworkMode
 from pyasic.errors import APIError
 from pyasic.miners.data import (
     DataFunction,
@@ -17,6 +18,9 @@ from pyasic.miners.data import (
 )
 from pyasic.miners.device.firmware import HashMasterFirmware
 from pyasic.miners.backends.utils import (
+    parse_bitmain_network_info,
+    build_bitmain_network_conf,
+    is_bitmain_write_success,
     parse_last_share_to_timestamp,
     apply_antminer_temperature_layout,
     build_antminer_temperature_raw,
@@ -30,7 +34,14 @@ HASHMASTER_ANTMINER_DATA_LOC = DataLocations(
     **{
         str(DataOptions.MAC): DataFunction(
             "_get_mac",
-            [WebAPICommand("web_get_system_info", "get_system_info")],
+            [
+                WebAPICommand("web_get_system_info", "get_system_info"),
+                WebAPICommand("web_get_network_info", "get_network_info"),
+            ],
+        ),
+        str(DataOptions.NETWORK): DataFunction(
+            "_get_network",
+            [WebAPICommand("web_get_network_info", "get_network_info")],
         ),
         str(DataOptions.API_VERSION): DataFunction(
             "_get_api_ver",
@@ -328,7 +339,9 @@ class HashMasterMiner(HashMasterFirmware):
             except KeyError:
                 pass
 
-    async def _get_mac(self, web_get_system_info: dict = None) -> Optional[str]:
+    async def _get_mac(
+        self, web_get_system_info: dict = None, web_get_network_info: dict = None
+    ) -> Optional[str]:
         if web_get_system_info is None:
             try:
                 web_get_system_info = await self.web.get_system_info()
@@ -341,12 +354,28 @@ class HashMasterMiner(HashMasterFirmware):
             except KeyError:
                 pass
 
-        try:
-            data = await self.web.get_network_info()
-            if data:
-                return data["macaddr"]
-        except KeyError:
-            pass
+        if web_get_network_info is None:
+            try:
+                web_get_network_info = await self.web.get_network_info()
+            except APIError:
+                pass
+
+        if web_get_network_info is not None:
+            try:
+                return web_get_network_info["macaddr"]
+            except KeyError:
+                pass
+
+    async def _get_network(
+        self, web_get_network_info: dict = None
+    ) -> Optional[MinerNetworkConfig]:
+        if web_get_network_info is None:
+            try:
+                web_get_network_info = await self.web.get_network_info()
+            except APIError:
+                pass
+
+        return parse_bitmain_network_info(web_get_network_info)
 
     async def fault_light_on(self) -> bool:
         # this should time out, after it does do a check
@@ -443,26 +472,46 @@ class HashMasterMiner(HashMasterFirmware):
         ip: str,
         dns: str,
         gateway: str,
-        subnet_mask: str = "255.255.255.0",
+        subnet_mask: str = None,
         hostname: str = None,
-    ):
-        if not hostname:
-            hostname = await self.get_hostname()
-        await self.web.set_network_conf(
-            ip=ip,
-            dns=dns,
-            gateway=gateway,
-            subnet_mask=subnet_mask,
-            hostname=hostname,
-            protocol=2,
-        )
+    ) -> bool:
+        """Give the miner a static address.
 
-    async def set_dhcp(self, hostname: str = None):
-        if not hostname:
+        Args:
+            ip: Address to set.
+            dns: DNS servers to set.
+            gateway: Gateway to set.
+            subnet_mask: Subnet mask to set.  There is no default on purpose,
+                guessing it writes the wrong mask onto miners off a /24.
+            hostname: Hostname to keep, read from the miner when not given.
+
+        Returns:
+            Whether the miner accepted the write.
+        """
+        if hostname is None:
             hostname = await self.get_hostname()
-        await self.web.set_network_conf(
-            ip="", dns="", gateway="", subnet_mask="", hostname=hostname, protocol=1
+        response = await self.web.set_network_conf(
+            **build_bitmain_network_conf(
+                NetworkMode.STATIC, ip, subnet_mask, gateway, dns, hostname
+            )
         )
+        return is_bitmain_write_success(response)
+
+    async def set_dhcp(self, hostname: str = None) -> bool:
+        """Hand the address back to DHCP.
+
+        Args:
+            hostname: Hostname to keep, read from the miner when not given.
+
+        Returns:
+            Whether the miner accepted the write.
+        """
+        if hostname is None:
+            hostname = await self.get_hostname()
+        response = await self.web.set_network_conf(
+            **build_bitmain_network_conf(NetworkMode.DHCP, hostname=hostname)
+        )
+        return is_bitmain_write_success(response)
 
     async def set_hostname(self, hostname: str):
         cfg = await self.web.get_network_info()

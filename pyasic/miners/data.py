@@ -42,6 +42,7 @@ class DataOptions(Enum):
     CONFIG = "config"
     POOLS = "pools"
     POWER_SUPPLIES = "psus"
+    NETWORK = "network"
 
     def __str__(self):
         return self.value

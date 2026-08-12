@@ -22,11 +22,16 @@ from typing import List, Optional
 from pyasic.config import MinerConfig
 from pyasic.config.mining import MiningModePreset
 from pyasic.data import Fan, HashBoard
+from pyasic.data.network import MinerNetworkConfig, NetworkMode
 from pyasic.data.pools import PoolMetrics, PoolUrl
 from pyasic.device.algorithm import AlgoHashRate
 from pyasic.errors import APIError
 from pyasic.miners.data import DataFunction, DataLocations, DataOptions, RPCAPICommand
-from pyasic.miners.backends.utils import parse_last_share_to_timestamp
+from pyasic.miners.backends.utils import (
+    clean_network_value,
+    parse_last_share_to_timestamp,
+    require_static_network_fields,
+)
 from pyasic.miners.device.firmware import LuxOSFirmware
 from pyasic.rpc.luxminer import LUXMinerRPCAPI
 
@@ -77,6 +82,9 @@ LUXMINER_DATA_LOC = DataLocations(
         ),
         str(DataOptions.SERIAL_NUMBER): DataFunction(
             "_get_serial_number", [RPCAPICommand("rpc_config", "config")]
+        ),
+        str(DataOptions.NETWORK): DataFunction(
+            "_get_network", [RPCAPICommand("rpc_config", "config")]
         ),
         str(DataOptions.API_VERSION): DataFunction(
             "_get_api_ver", [RPCAPICommand("rpc_version", "version")]
@@ -253,6 +261,123 @@ class LUXMiner(LuxOSFirmware):
                 return rpc_config["CONFIG"][0]["MACAddr"].upper()
             except KeyError:
                 pass
+
+    async def _netset(self, settings: dict) -> bool:
+        """Send a netset call and report whether the miner scheduled the change.
+
+        The miner only schedules the change here, it is applied a few seconds later
+        when the network stack restarts, so a true return means the miner accepted
+        the request rather than that the new configuration is already live.
+        """
+        try:
+            response = await self.rpc.netset(**settings)
+        except APIError:
+            return False
+
+        try:
+            return response["STATUS"][0]["STATUS"] == "S"
+        except LookupError:
+            return False
+
+    async def _current_network_defaults(
+        self, hostname: str | None, dns: str | None
+    ) -> tuple[str | None, str | None]:
+        """Fill hostname and dns from what is in effect when the caller omitted them.
+
+        Fields left out of a netset call are undocumented, so every field is sent.
+        """
+        if hostname is not None and dns is not None:
+            return hostname, dns
+
+        current = await self._get_network()
+        if current is not None:
+            if hostname is None:
+                hostname = current.hostname
+            if dns is None:
+                dns = current.dns
+        return hostname, dns
+
+    async def set_static_ip(
+        self,
+        ip: str,
+        dns: str,
+        gateway: str,
+        subnet_mask: str = None,
+        hostname: str = None,
+    ) -> bool:
+        """Give the miner a static address.
+
+        Args:
+            ip: Address to set.
+            dns: DNS servers to set, semicolon separated when there are several.
+            gateway: Gateway to set.
+            subnet_mask: Subnet mask to set.
+            hostname: Hostname to keep, read from the miner when not given.
+
+        Returns:
+            Whether the miner scheduled the change.
+        """
+        require_static_network_fields(ip=ip, netmask=subnet_mask, gateway=gateway)
+        hostname, dns = await self._current_network_defaults(hostname, dns)
+
+        settings = {
+            "dhcp": "false",
+            "ipaddress": ip,
+            "netmask": subnet_mask,
+            "gateway": gateway,
+        }
+        if hostname:
+            settings["hostname"] = hostname
+        if dns:
+            settings["dnsservers"] = dns
+        return await self._netset(settings)
+
+    async def set_dhcp(self, hostname: str = None) -> bool:
+        """Hand the address back to DHCP.
+
+        Args:
+            hostname: Hostname to keep, read from the miner when not given.
+
+        Returns:
+            Whether the miner scheduled the change.
+        """
+        hostname, _ = await self._current_network_defaults(hostname, "")
+
+        settings = {"dhcp": "true"}
+        if hostname:
+            settings["hostname"] = hostname
+        return await self._netset(settings)
+
+    async def _get_network(
+        self, rpc_config: dict = None
+    ) -> Optional[MinerNetworkConfig]:
+        if rpc_config is None:
+            try:
+                rpc_config = await self.rpc.config()
+            except APIError:
+                pass
+
+        if rpc_config is None:
+            return None
+
+        try:
+            config = rpc_config["CONFIG"][0]
+        except LookupError:
+            return None
+
+        mode = None
+        raw_mode = config.get("DHCP")
+        if isinstance(raw_mode, bool):
+            mode = NetworkMode.DHCP if raw_mode else NetworkMode.STATIC
+
+        return MinerNetworkConfig(
+            mode=mode,
+            ip=clean_network_value(config.get("IPAddr")),
+            netmask=clean_network_value(config.get("Netmask")),
+            gateway=clean_network_value(config.get("Gateway")),
+            dns=clean_network_value(config.get("DNS Servers")),
+            hostname=clean_network_value(config.get("Hostname")),
+        )
 
     async def _get_serial_number(self, rpc_config: dict = None) -> Optional[str]:
         if rpc_config is None:

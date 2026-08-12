@@ -20,6 +20,7 @@ from typing import List, Optional, Protocol, Tuple, Type, TypeVar, Union
 
 from pyasic.config import MinerConfig
 from pyasic.data import Fan, HashBoard, MinerData, PowerSupply
+from pyasic.data.network import MinerNetworkConfig
 from pyasic.data.device import DeviceInfo
 from pyasic.data.error_codes import MinerErrorData
 from pyasic.data.pools import PoolMetrics
@@ -464,6 +465,9 @@ class MinerProtocol(Protocol):
 
     async def _get_temperature_raw(self) -> list[dict]:
         return []
+
+    async def _get_network(self) -> Optional[MinerNetworkConfig]:
+        pass
 
     async def _get_data(
         self,

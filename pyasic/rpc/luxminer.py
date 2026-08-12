@@ -569,6 +569,30 @@ class LUXMinerRPCAPI(BaseMinerRPCAPI):
         """
         return await self.send_command("limits")
 
+    async def netset(self, **settings: str) -> dict:
+        """Set the network configuration of the miner.
+
+        Args:
+            **settings: Key value pairs accepted by ``netset``, which are ``dhcp``,
+                ``hostname``, ``ipaddress``, ``netmask``, ``gateway`` and
+                ``dnsservers``.
+
+        Returns:
+            The response of the miner, code 336 when the change was scheduled.
+
+        Raises:
+            TypeError: When called without any setting, which the miner would read
+                as a request to restart the network rather than to change it.
+        """
+        if not settings:
+            raise TypeError(
+                "netset requires at least one setting, "
+                "calling it with none restarts the network instead."
+            )
+        return await self.send_privileged_command(
+            "netset", *[f"{key}={value}" for key, value in settings.items()]
+        )
+
     async def logoff(self) -> dict:
         """Log off of a session.
         <details>

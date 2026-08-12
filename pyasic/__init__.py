@@ -17,7 +17,7 @@ import importlib.metadata
 
 from pyasic import settings
 from pyasic.config import MinerConfig
-from pyasic.data import MinerData
+from pyasic.data import MinerData, MinerNetworkConfig, NetworkMode
 from pyasic.errors import APIError, APIWarning
 from pyasic.miners import *
 from pyasic.network import MinerNetwork

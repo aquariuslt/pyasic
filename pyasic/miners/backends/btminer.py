@@ -25,13 +25,22 @@ from pyasic.data import Fan, HashBoard, PowerSupply
 from pyasic.data.error_codes import MinerErrorData, WhatsminerError
 from pyasic.data.pools import PoolMetrics, PoolUrl
 from pyasic.device.algorithm import AlgoHashRate
+from pyasic.data.network import MinerNetworkConfig, NetworkMode
 from pyasic.errors import APIError
+from pyasic.miners.backends.utils import (
+    clean_network_value,
+    require_static_network_fields,
+)
 from pyasic.miners.data import DataFunction, DataLocations, DataOptions, RPCAPICommand
 from pyasic.miners.device.firmware import StockFirmware
 from pyasic.rpc.btminer import BTMinerRPCAPI
 
 BTMINER_DATA_LOC = DataLocations(
     **{
+        str(DataOptions.NETWORK): DataFunction(
+            "_get_network",
+            [RPCAPICommand("rpc_get_miner_info", "get_miner_info")],
+        ),
         str(DataOptions.MAC): DataFunction(
             "_get_mac",
             [
@@ -330,6 +339,40 @@ class BTMiner(StockFirmware):
     ##################################################
     ### DATA GATHERING FUNCTIONS (get_{some_data}) ###
     ##################################################
+
+    async def _get_network(
+        self, rpc_get_miner_info: dict = None
+    ) -> Optional[MinerNetworkConfig]:
+        if rpc_get_miner_info is None:
+            try:
+                rpc_get_miner_info = await self.rpc.get_miner_info()
+            except APIError:
+                pass
+
+        if rpc_get_miner_info is None:
+            return None
+
+        try:
+            msg = rpc_get_miner_info["Msg"]
+        except KeyError:
+            return None
+
+        mode = None
+        raw_mode = msg.get("proto")
+        if isinstance(raw_mode, str):
+            try:
+                mode = NetworkMode(raw_mode.strip().lower())
+            except ValueError:
+                mode = None
+
+        return MinerNetworkConfig(
+            mode=mode,
+            ip=clean_network_value(msg.get("ip")),
+            netmask=clean_network_value(msg.get("netmask")),
+            gateway=clean_network_value(msg.get("gateway")),
+            dns=clean_network_value(msg.get("dns")),
+            hostname=clean_network_value(msg.get("hostname")),
+        )
 
     async def _get_mac(
         self, rpc_summary: dict = None, rpc_get_miner_info: dict = None
@@ -722,19 +765,61 @@ class BTMiner(StockFirmware):
         ip: str,
         dns: str,
         gateway: str,
-        subnet_mask: str = "255.255.255.0",
+        subnet_mask: str = None,
         hostname: str = None,
-    ):
-        if not hostname:
-            hostname = await self.get_hostname()
-        await self.rpc.net_config(
-            ip=ip, mask=subnet_mask, dns=dns, gate=gateway, host=hostname, dhcp=False
-        )
+    ) -> bool:
+        """Give the miner a static address.
 
-    async def set_dhcp(self, hostname: str = None):
-        if hostname:
-            await self.set_hostname(hostname)
-        await self.rpc.net_config()
+        This goes through the privileged RPC, which needs the admin password to be
+        configured in settings as ``default_whatsminer_rpc_password``.
+
+        Args:
+            ip: Address to set.
+            dns: DNS servers to set.
+            gateway: Gateway to set.
+            subnet_mask: Subnet mask to set.
+            hostname: Hostname to keep, read from the miner when not given.
+
+        Returns:
+            Whether the miner accepted the write.
+        """
+        require_static_network_fields(
+            ip=ip, netmask=subnet_mask, gateway=gateway, dns=dns
+        )
+        if hostname is None:
+            hostname = await self.get_hostname()
+
+        try:
+            response = await self.rpc.net_config(
+                ip=ip,
+                mask=subnet_mask,
+                dns=dns,
+                gate=gateway,
+                host=hostname,
+                dhcp=False,
+            )
+        except APIError:
+            return False
+
+        return isinstance(response, dict) and response.get("STATUS") == "S"
+
+    async def set_dhcp(self, hostname: str = None) -> bool:
+        """Hand the address back to DHCP.
+
+        Args:
+            hostname: Hostname to set before switching, left alone when not given.
+
+        Returns:
+            Whether the miner accepted the write.
+        """
+        try:
+            if hostname:
+                await self.set_hostname(hostname)
+            response = await self.rpc.net_config()
+        except APIError:
+            return False
+
+        return isinstance(response, dict) and response.get("STATUS") == "S"
 
     async def set_hostname(self, hostname: str):
         await self.rpc.set_hostname(hostname)

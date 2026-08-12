@@ -17,7 +17,9 @@ from typing import Optional
 
 from pyasic import APIError
 from pyasic.config import MinerConfig, MiningModeConfig
+from pyasic.data.network import MinerNetworkConfig
 from pyasic.miners.backends import BMMiner
+from pyasic.miners.backends.utils import parse_bitmain_network_info
 from pyasic.miners.data import (
     DataFunction,
     DataLocations,
@@ -32,7 +34,14 @@ HIVEON_MODERN_DATA_LOC = DataLocations(
     **{
         str(DataOptions.MAC): DataFunction(
             "_get_mac",
-            [WebAPICommand("web_get_system_info", "get_system_info")],
+            [
+                WebAPICommand("web_get_system_info", "get_system_info"),
+                WebAPICommand("web_get_network_info", "get_network_info"),
+            ],
+        ),
+        str(DataOptions.NETWORK): DataFunction(
+            "_get_network",
+            [WebAPICommand("web_get_network_info", "get_network_info")],
         ),
         str(DataOptions.HOSTNAME): DataFunction(
             "_get_hostname",
@@ -160,7 +169,9 @@ class HiveonModern(HiveonFirmware, BMMiner):
             except KeyError:
                 pass
 
-    async def _get_mac(self, web_get_system_info: dict = None) -> Optional[str]:
+    async def _get_mac(
+        self, web_get_system_info: dict = None, web_get_network_info: dict = None
+    ) -> Optional[str]:
         if web_get_system_info is None:
             try:
                 web_get_system_info = await self.web.get_system_info()
@@ -173,12 +184,28 @@ class HiveonModern(HiveonFirmware, BMMiner):
             except KeyError:
                 pass
 
-        try:
-            data = await self.web.get_network_info()
-            if data:
-                return data["macaddr"]
-        except KeyError:
-            pass
+        if web_get_network_info is None:
+            try:
+                web_get_network_info = await self.web.get_network_info()
+            except APIError:
+                pass
+
+        if web_get_network_info is not None:
+            try:
+                return web_get_network_info["macaddr"]
+            except KeyError:
+                pass
+
+    async def _get_network(
+        self, web_get_network_info: dict = None
+    ) -> Optional[MinerNetworkConfig]:
+        if web_get_network_info is None:
+            try:
+                web_get_network_info = await self.web.get_network_info()
+            except APIError:
+                pass
+
+        return parse_bitmain_network_info(web_get_network_info)
 
     async def _get_fault_light(
         self, web_get_blink_status: dict = None

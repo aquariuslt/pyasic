@@ -31,6 +31,7 @@ from pyasic.config import MinerConfig
 from pyasic.config.mining import MiningModePowerTune
 from pyasic.data import Fan, HashBoard
 from pyasic.data.error_codes import BraiinsOSError, MinerErrorData
+from pyasic.miners.backends.utils import require_static_network_fields
 from pyasic.data.pools import PoolMetrics, PoolUrl
 from pyasic.device.algorithm import AlgoHashRate, AlgoHashRateType
 from pyasic.errors import APIError
@@ -238,8 +239,11 @@ class BOSMiner(BraiinsOSFirmware):
         ip: str,
         dns: str,
         gateway: str,
-        subnet_mask: str = "255.255.255.0",
+        subnet_mask: str = None,
     ):
+        require_static_network_fields(
+            ip=ip, netmask=subnet_mask, gateway=gateway, dns=dns
+        )
         cfg_data_lan = "\n\t".join(
             [
                 "config interface 'lan'",
