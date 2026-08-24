@@ -142,6 +142,21 @@ class MiningModeSleep(MinerConfigValue):
         }
 
 
+class MiningModeUnknown(MinerConfigValue):
+    """Mining mode when the firmware config could not be read or parsed.
+
+    Serialization stays empty on purpose: writing any mode field back to a miner
+    whose real mode is unknown could wake a sleeping miner or drop its preset.
+    Do not override the as_* methods.
+    """
+
+    mode: str = field(init=False, default="unknown")
+
+    @classmethod
+    def from_dict(cls, dict_conf: dict | None) -> "MiningModeUnknown":
+        return cls()
+
+
 class MiningModeLPM(MinerConfigValue):
     mode: str = field(init=False, default="low")
 
@@ -668,6 +683,7 @@ class MiningModeConfig(MinerConfigOption):
     hashrate_tuning = MiningModeHashrateTune
     preset = MiningModePreset
     manual = MiningModeManual
+    unknown = MiningModeUnknown
 
     @classmethod
     def default(cls):
@@ -700,7 +716,7 @@ class MiningModeConfig(MinerConfigOption):
             else:
                 work_mode = int(work_mode)
         if work_mode is None:
-            return cls.default()
+            return cls.unknown()
         if work_mode == 0:
             if ex_hashrate_mode is None:
                 return cls.normal()
@@ -717,7 +733,7 @@ class MiningModeConfig(MinerConfigOption):
             return cls.sleep()
         elif work_mode == 3:
             return cls.low()
-        return cls.default()
+        return cls.unknown()
 
     @classmethod
     def from_hashmaster_am(cls, web_conf: dict, web_presets: dict | None):
@@ -733,7 +749,7 @@ class MiningModeConfig(MinerConfigOption):
             else:
                 work_mode = int(work_mode)
         if work_mode is None:
-            return cls.default()
+            return cls.unknown()
         if work_mode == 0:
             if ex_hashrate_mode is None:
                 return cls.normal()
@@ -748,49 +764,49 @@ class MiningModeConfig(MinerConfigOption):
             return cls.sleep()
         elif work_mode == 3:
             return cls.low()
-        return cls.default()
+        return cls.unknown()
 
     @classmethod
     def from_am_modern(cls, web_conf: dict):
         if web_conf.get("bitmain-work-mode") is not None:
             work_mode = web_conf["bitmain-work-mode"]
             if work_mode == "":
-                return cls.default()
+                return cls.unknown()
             if int(work_mode) == 0:
                 return cls.normal()
             elif int(work_mode) == 1:
                 return cls.sleep()
             elif int(work_mode) == 3:
                 return cls.low()
-        return cls.default()
+        return cls.unknown()
 
     @classmethod
     def from_hiveon_modern(cls, web_conf: dict):
         if web_conf.get("bitmain-work-mode") is not None:
             work_mode = web_conf["bitmain-work-mode"]
             if work_mode == "":
-                return cls.default()
+                return cls.unknown()
             if int(work_mode) == 0:
                 return cls.normal()
             elif int(work_mode) == 1:
                 return cls.sleep()
             elif int(work_mode) == 3:
                 return cls.low()
-        return cls.default()
+        return cls.unknown()
 
     @classmethod
     def from_elphapex(cls, web_conf: dict):
         if web_conf.get("fc-work-mode") is not None:
             work_mode = web_conf["fc-work-mode"]
             if work_mode == "":
-                return cls.default()
+                return cls.unknown()
             if int(work_mode) == 0:
                 return cls.normal()
             elif int(work_mode) == 1:
                 return cls.sleep()
             elif int(work_mode) == 3:
                 return cls.low()
-        return cls.default()
+        return cls.unknown()
 
     @classmethod
     def from_epic(cls, web_conf: dict):
@@ -834,7 +850,7 @@ class MiningModeConfig(MinerConfigOption):
             else:
                 return MiningModeManual.from_epic(web_conf)
         except KeyError:
-            return cls.default()
+            return cls.unknown()
 
     @classmethod
     def from_bosminer(cls, toml_conf: dict):
@@ -883,7 +899,7 @@ class MiningModeConfig(MinerConfigOption):
         try:
             mode_settings = web_settings["miner"]["overclock"]
         except KeyError:
-            return cls.default()
+            return cls.unknown()
 
         if mode_settings["preset"] == "disabled":
             return MiningModeManual.from_vnish(mode_settings)
@@ -955,7 +971,8 @@ class MiningModeConfig(MinerConfigOption):
             if mode_data.get("Power") is not None:
                 return cls.power_tuning(power=mode_data["Power"])
         except LookupError:
-            return cls.default()
+            return cls.unknown()
+        return cls.unknown()
 
     @classmethod
     def from_mara(cls, web_config: dict):
@@ -980,7 +997,7 @@ class MiningModeConfig(MinerConfigOption):
                     return cls.power_tuning(power=auto_conf["power-target"])
         except LookupError:
             pass
-        return cls.default()
+        return cls.unknown()
 
     @classmethod
     def from_luxos(cls, rpc_config: dict, rpc_profiles: dict):
@@ -1002,5 +1019,6 @@ MiningMode = TypeVar(
         MiningModePowerTune,
         MiningModeHashrateTune,
         MiningModePreset,
+        MiningModeUnknown,
     ],
 )
