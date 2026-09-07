@@ -16,13 +16,14 @@
 import asyncio
 import ipaddress
 import warnings
-from typing import List, Optional, Protocol, Tuple, Type, TypeVar, Union
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional, Protocol, Tuple, Type, TypeVar, Union
 
 from pyasic.config import MinerConfig
 from pyasic.data import Fan, HashBoard, MinerData, PowerSupply
-from pyasic.data.network import MinerNetworkConfig
 from pyasic.data.device import DeviceInfo
 from pyasic.data.error_codes import MinerErrorData
+from pyasic.data.network import MinerNetworkConfig
 from pyasic.data.pools import PoolMetrics
 from pyasic.device.algorithm import MinerAlgoType
 from pyasic.device.algorithm.base import GenericAlgo
@@ -33,6 +34,16 @@ from pyasic.device.models import MinerModelType
 from pyasic.errors import APIError
 from pyasic.logger import logger
 from pyasic.miners.data import DataLocations, DataOptions, RPCAPICommand, WebAPICommand
+
+
+@dataclass
+class MinerDataReadResult:
+    """Outcome of `get_data_with_field_errors`: the data with every field that
+    parsed, plus the parser exception of every requested field that did not.
+    A field listed in `field_errors` keeps its default value on `data`."""
+
+    data: MinerData
+    field_errors: Dict[str, Exception] = field(default_factory=dict)
 
 
 class MinerProtocol(Protocol):
@@ -474,7 +485,10 @@ class MinerProtocol(Protocol):
         allow_warning: bool,
         include: List[Union[str, DataOptions]] = None,
         exclude: List[Union[str, DataOptions]] = None,
-    ) -> dict:
+    ) -> Tuple[dict, Dict[str, Exception]]:
+        # one parser raising must not discard the fields already parsed: the
+        # commands were all sent before parsing started, so every failure is
+        # collected and the caller decides whether to raise
         # handle include
         if include is not None:
             include = [str(i) for i in include]
@@ -533,6 +547,7 @@ class MinerProtocol(Protocol):
             api_command_data = {}
 
         miner_data = {}
+        field_errors: Dict[str, Exception] = {}
 
         for data_name in include:
             try:
@@ -560,10 +575,8 @@ class MinerProtocol(Protocol):
                 function = getattr(self, getattr(self.data_locations, data_name).cmd)
                 miner_data[data_name] = await function(**args_to_send)
             except Exception as e:
-                raise APIError(
-                    f"Failed to call {data_name} on {self} while getting data."
-                ) from e
-        return miner_data
+                field_errors[data_name] = e
+        return miner_data, field_errors
 
     async def get_data(
         self,
@@ -580,6 +593,39 @@ class MinerProtocol(Protocol):
 
         Returns:
             A [`MinerData`][pyasic.data.MinerData] instance containing data from the miner.
+
+        Raises:
+            APIError: When the parser of any requested data item fails. Use
+                `get_data_with_field_errors` to keep the other items instead.
+        """
+        result = await self.get_data_with_field_errors(
+            allow_warning=allow_warning, include=include, exclude=exclude
+        )
+        for data_name, error in result.field_errors.items():
+            raise APIError(
+                f"Failed to call {data_name} on {self} while getting data."
+            ) from error
+        return result.data
+
+    async def get_data_with_field_errors(
+        self,
+        allow_warning: bool = False,
+        include: List[Union[str, DataOptions]] = None,
+        exclude: List[Union[str, DataOptions]] = None,
+    ) -> MinerDataReadResult:
+        """Get data from the miner, keeping every data item whose parser
+        succeeded when another one fails.
+
+        Parameters:
+            allow_warning: Allow warning when an API command fails.
+            include: Names of data items you want to gather. Defaults to all data.
+            exclude: Names of data items to exclude.  Exclusion happens after considering included items.
+
+        Returns:
+            A [`MinerDataReadResult`][pyasic.miners.base.MinerDataReadResult]: the
+            [`MinerData`][pyasic.data.MinerData] with every parsed item set, and the
+            exception of each requested item whose parser failed, keyed by item name.
+            Failed items keep their default value on the data.
         """
         data = MinerData(
             ip=str(self.ip),
@@ -601,13 +647,13 @@ class MinerProtocol(Protocol):
             ],
         )
 
-        gathered_data = await self._get_data(
+        gathered_data, field_errors = await self._get_data(
             allow_warning=allow_warning, include=include, exclude=exclude
         )
         for item in gathered_data:
             if gathered_data[item] is not None:
                 setattr(data, item, gathered_data[item])
-        return data
+        return MinerDataReadResult(data=data, field_errors=field_errors)
 
 
 class BaseMiner(MinerProtocol):
