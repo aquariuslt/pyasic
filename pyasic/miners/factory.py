@@ -22,6 +22,7 @@ import json
 import re
 import typing
 import warnings
+from dataclasses import dataclass, field
 from typing import Any, AsyncGenerator, Callable, Union
 
 import anyio
@@ -137,6 +138,26 @@ class MinerTypes(enum.Enum):
     BITFUFU = 19
     HASHMASTER = 20
     SPIDER_OS = 21
+
+
+class MinerIdentifyStatus(str, enum.Enum):
+    """How far identification got; the first two carry a usable miner."""
+
+    IDENTIFIED = "identified"
+    # type detected, model unknown: the type's generic class still gathers
+    MODEL_UNRESOLVED = "model_unresolved"
+    TIMEOUT = "timeout"
+    # answered, but no type or no implementation matched
+    UNRECOGNIZED = "unrecognized"
+
+
+@dataclass
+class MinerIdentifyResult:
+    """Result of `identify_miner`; `errors` is keyed by probe stage: type, model."""
+
+    miner: AnyMiner | None
+    status: MinerIdentifyStatus
+    errors: dict[str, Exception] = field(default_factory=dict)
 
 
 MINER_CLASSES = {
@@ -876,65 +897,107 @@ class MinerFactory:
                     yield result
 
     async def get_miner(self, ip: str | ipaddress.ip_address) -> AnyMiner | None:
+        result = await self.identify_miner(ip)
+        # keeps the original behavior: a probe exception propagates
+        for error in result.errors.values():
+            raise error
+        return result.miner
+
+    async def identify_miner(
+        self,
+        ip: str | ipaddress.ip_address,
+        *,
+        timeout: float | None = None,
+        retries: int | None = None,
+    ) -> MinerIdentifyResult:
+        """Identify a miner and report how far identification got.
+
+        A probe exception is recorded in `errors` instead of raised.
+
+        Parameters:
+            timeout: Seconds per probe; defaults to `factory_get_timeout`.
+            retries: Type probe attempts; defaults to `factory_get_retries`.
+        """
         ip = str(ip)
+        if timeout is None:
+            timeout = settings.get("factory_get_timeout", 3)
+        if retries is None:
+            retries = settings.get("factory_get_retries", 1)
 
         miner_type = None
+        errors: dict[str, Exception] = {}
+        type_probe_answered = False
 
-        for _ in range(settings.get("factory_get_retries", 1)):
+        for _ in range(retries):
             task = asyncio.create_task(self._get_miner_type(ip))
             try:
-                miner_type = await asyncio.wait_for(
-                    task, timeout=settings.get("factory_get_timeout", 3)
-                )
+                miner_type = await asyncio.wait_for(task, timeout=timeout)
             except asyncio.TimeoutError:
                 continue
+            except Exception as e:  # noqa: BLE001
+                errors["type"] = e
+                type_probe_answered = True
+                break
             else:
+                type_probe_answered = True
                 if miner_type is not None:
                     break
 
-        if miner_type is not None:
-            miner_model = None
-            miner_model_fns = {
-                MinerTypes.ANTMINER: self.get_miner_model_antminer,
-                MinerTypes.WHATSMINER: self.get_miner_model_whatsminer,
-                MinerTypes.AVALONMINER: self.get_miner_model_avalonminer,
-                MinerTypes.INNOSILICON: self.get_miner_model_innosilicon,
-                MinerTypes.GOLDSHELL: self.get_miner_model_goldshell,
-                MinerTypes.BRAIINS_OS: self.get_miner_model_braiins_os,
-                MinerTypes.VNISH: self.get_miner_model_vnish,
-                MinerTypes.EPIC: self.get_miner_model_epic,
-                MinerTypes.HIVEON: self.get_miner_model_hiveon,
-                MinerTypes.LUX_OS: self.get_miner_model_luxos,
-                MinerTypes.AURADINE: self.get_miner_model_auradine,
-                MinerTypes.MARATHON: self.get_miner_model_marathon,
-                MinerTypes.BITAXE: self.get_miner_model_bitaxe,
-                MinerTypes.LUCKYMINER: self.get_miner_model_luckyminer,
-                MinerTypes.ICERIVER: self.get_miner_model_iceriver,
-                MinerTypes.HAMMER: self.get_miner_model_hammer,
-                MinerTypes.VOLCMINER: self.get_miner_model_volcminer,
-                MinerTypes.ELPHAPEX: self.get_miner_model_elphapex,
-                MinerTypes.BITFUFU: self.get_miner_model_bitfufu,
-                MinerTypes.HASHMASTER: self.get_miner_model_hash_master,
-                MinerTypes.SPIDER_OS: self.get_miner_model_spider_os,
-            }
-            fn = miner_model_fns.get(miner_type)
-
-            if fn is not None:
-                # noinspection PyArgumentList
-                task = asyncio.create_task(fn(ip))
-                try:
-                    miner_model = await asyncio.wait_for(
-                        task, timeout=settings.get("factory_get_timeout", 3)
-                    )
-                except asyncio.TimeoutError:
-                    logger.info("get miner model for %s timed out", miner_type)
-                    pass
-            miner = self._select_miner_from_classes(
-                ip,
-                miner_type=miner_type,
-                miner_model=miner_model,
+        if miner_type is None:
+            status = (
+                MinerIdentifyStatus.UNRECOGNIZED
+                if type_probe_answered
+                else MinerIdentifyStatus.TIMEOUT
             )
-            return miner
+            return MinerIdentifyResult(miner=None, status=status, errors=errors)
+
+        miner_model = None
+        miner_model_fns = {
+            MinerTypes.ANTMINER: self.get_miner_model_antminer,
+            MinerTypes.WHATSMINER: self.get_miner_model_whatsminer,
+            MinerTypes.AVALONMINER: self.get_miner_model_avalonminer,
+            MinerTypes.INNOSILICON: self.get_miner_model_innosilicon,
+            MinerTypes.GOLDSHELL: self.get_miner_model_goldshell,
+            MinerTypes.BRAIINS_OS: self.get_miner_model_braiins_os,
+            MinerTypes.VNISH: self.get_miner_model_vnish,
+            MinerTypes.EPIC: self.get_miner_model_epic,
+            MinerTypes.HIVEON: self.get_miner_model_hiveon,
+            MinerTypes.LUX_OS: self.get_miner_model_luxos,
+            MinerTypes.AURADINE: self.get_miner_model_auradine,
+            MinerTypes.MARATHON: self.get_miner_model_marathon,
+            MinerTypes.BITAXE: self.get_miner_model_bitaxe,
+            MinerTypes.LUCKYMINER: self.get_miner_model_luckyminer,
+            MinerTypes.ICERIVER: self.get_miner_model_iceriver,
+            MinerTypes.HAMMER: self.get_miner_model_hammer,
+            MinerTypes.VOLCMINER: self.get_miner_model_volcminer,
+            MinerTypes.ELPHAPEX: self.get_miner_model_elphapex,
+            MinerTypes.BITFUFU: self.get_miner_model_bitfufu,
+            MinerTypes.HASHMASTER: self.get_miner_model_hash_master,
+            MinerTypes.SPIDER_OS: self.get_miner_model_spider_os,
+        }
+        fn = miner_model_fns.get(miner_type)
+
+        if fn is not None:
+            # noinspection PyArgumentList
+            task = asyncio.create_task(fn(ip))
+            try:
+                miner_model = await asyncio.wait_for(task, timeout=timeout)
+            except asyncio.TimeoutError:
+                logger.info("get miner model for %s timed out", miner_type)
+            except Exception as e:  # noqa: BLE001
+                errors["model"] = e
+        miner = self._select_miner_from_classes(
+            ip,
+            miner_type=miner_type,
+            miner_model=miner_model,
+        )
+        if isinstance(miner, UnknownMiner):
+            status = MinerIdentifyStatus.UNRECOGNIZED
+        elif miner.raw_model is None:
+            status = MinerIdentifyStatus.MODEL_UNRESOLVED
+        else:
+            status = MinerIdentifyStatus.IDENTIFIED
+        return MinerIdentifyResult(miner=miner, status=status, errors=errors)
 
     async def _get_miner_type(self, ip: str) -> MinerTypes | None:
         tasks = [
@@ -1759,3 +1822,12 @@ miner_factory = MinerFactory()
 # abstracted version of get miner that is easier to access
 async def get_miner(ip: ipaddress.ip_address | str) -> AnyMiner:
     return await miner_factory.get_miner(ip)
+
+
+async def identify_miner(
+    ip: ipaddress.ip_address | str,
+    *,
+    timeout: float | None = None,
+    retries: int | None = None,
+) -> MinerIdentifyResult:
+    return await miner_factory.identify_miner(ip, timeout=timeout, retries=retries)
