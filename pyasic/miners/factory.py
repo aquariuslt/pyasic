@@ -855,18 +855,51 @@ MINER_CLASSES = {
 }
 
 
+def _class_table_key(
+    miner_type: MinerTypes | None, miner_model: str | None
+) -> tuple[MinerTypes | None, str]:
+    """The (type, model) the class table is keyed by. Hiveon miners answer with
+    the antminer model plus that word, and their classes live under the
+    stripped name in the hiveon table. Every lookup of the table goes through
+    here, so a model the probes report and the class it resolves to cannot
+    drift apart."""
+    model_key = str(miner_model).upper()
+    if "HIVEON" in model_key:
+        return MinerTypes.HIVEON, model_key.replace(" HIVEON", "")
+    return miner_type, model_key
+
+
+def _resolves_to_miner_class(
+    miner_type: MinerTypes | None, miner_model: str | None
+) -> bool:
+    """Whether the class table holds a class for this model."""
+    if miner_model is None:
+        return False
+    table_type, model_key = _class_table_key(miner_type, miner_model)
+    return model_key in MINER_CLASSES.get(table_type, {})
+
+
+async def _cancel_tasks(tasks: list) -> None:
+    # the caller is done with all of them, so whatever a task ends with stops
+    # here: the cancellation of one still running, or the error of one that
+    # had already finished. Cancellation is not an Exception, hence both
+    for task in tasks:
+        task.cancel()
+        try:
+            await task
+        except (asyncio.CancelledError, Exception):
+            pass
+
+
 async def concurrent_get_first_result(tasks: list, verification_func: Callable) -> Any:
     res = None
-    for fut in asyncio.as_completed(tasks):
-        res = await fut
-        if verification_func(res):
-            break
-    for t in tasks:
-        t.cancel()
-        try:
-            await t
-        except asyncio.CancelledError:
-            pass
+    try:
+        for fut in asyncio.as_completed(tasks):
+            res = await fut
+            if verification_func(res):
+                break
+    finally:
+        await _cancel_tasks(tasks)
     return res
 
 
@@ -1338,20 +1371,17 @@ class MinerFactory:
         miner_model: str | None,
         miner_type: MinerTypes | None,
     ) -> AnyMiner | None:
-        # special case since hiveon miners return web results copying the antminer stock FW
-        if "HIVEON" in str(miner_model).upper():
-            miner_model = str(miner_model).upper().replace(" HIVEON", "")
-            miner_type = MinerTypes.HIVEON
+        table_type, model_key = _class_table_key(miner_type, miner_model)
         try:
-            return MINER_CLASSES[miner_type][str(miner_model).upper()](ip)
+            return MINER_CLASSES[table_type][model_key](ip)
         except LookupError:
-            if miner_type in MINER_CLASSES:
+            if table_type in MINER_CLASSES:
                 if miner_model is not None:
                     warnings.warn(
-                        f"Partially supported miner found: {miner_model}, type: {miner_type}, please open an issue with miner data "
+                        f"Partially supported miner found: {miner_model}, type: {table_type}, please open an issue with miner data "
                         f"and this model on GitHub (https://github.com/UpstreamData/pyasic/issues)."
                     )
-                return MINER_CLASSES[miner_type][None](ip)
+                return MINER_CLASSES[table_type][None](ip)
             return UnknownMiner(str(ip))
 
     async def get_miner_model_hash_master(self, ip: str) -> str | None:
@@ -1440,12 +1470,28 @@ class MinerFactory:
             pass
 
     async def get_miner_model_antminer(self, ip: str) -> str | None:
+        # Stock firmware from late 2024 on reports the control board's code
+        # (HHB56XXX, HHB68XXX, ...) as the rpc Type and names the model on the
+        # web interface only, and the rpc answers first. So the first answer
+        # that resolves to a class wins; when neither does, the first answer of
+        # all is kept so the partially-supported warning names it
         tasks = [
             asyncio.create_task(self._get_model_antminer_web(ip)),
             asyncio.create_task(self._get_model_antminer_sock(ip)),
         ]
-
-        return await concurrent_get_first_result(tasks, lambda x: x is not None)
+        first_answer = None
+        try:
+            for fut in asyncio.as_completed(tasks):
+                miner_model = await fut
+                if miner_model is None:
+                    continue
+                if _resolves_to_miner_class(MinerTypes.ANTMINER, miner_model):
+                    return miner_model
+                if first_answer is None:
+                    first_answer = miner_model
+        finally:
+            await _cancel_tasks(tasks)
+        return first_answer
 
     async def _get_model_antminer_web(self, ip: str) -> str | None:
         # last resort, this is slow
