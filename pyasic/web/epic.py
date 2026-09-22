@@ -24,7 +24,7 @@ import aiofiles
 import httpx
 
 from pyasic import settings
-from pyasic.errors import APIError
+from pyasic.errors import APIError, APITransportError
 from pyasic.web.base import BaseWebAPI
 
 
@@ -48,6 +48,7 @@ class ePICWebAPI(BaseWebAPI):
 
         async with httpx.AsyncClient(transport=settings.transport()) as client:
             for retry_cnt in range(settings.get("get_data_retries", 1)):
+                self._start_command(command)
                 try:
                     if parameters.get("form") is not None:
                         form_data = parameters["form"]
@@ -72,6 +73,9 @@ class ePICWebAPI(BaseWebAPI):
                             timeout=5,
                         )
                     if not response.status_code == 200:
+                        self._record_transport_error(
+                            command, APITransportError(f"HTTP {response.status_code}")
+                        )
                         if not ignore_errors:
                             raise APIError(
                                 f"Web command {command} failed with status code {response.status_code}"
@@ -87,7 +91,11 @@ class ePICWebAPI(BaseWebAPI):
                                 raise APIError(json_data["error"])
                         return json_data
                     return {"success": True}
-                except (httpx.HTTPError, json.JSONDecodeError, AttributeError):
+                except httpx.HTTPError as e:
+                    self._record_transport_error(command, e)
+                except json.JSONDecodeError:
+                    self._record_decode_failure(command)
+                except AttributeError:
                     pass
 
     async def multicommand(
@@ -96,7 +104,12 @@ class ePICWebAPI(BaseWebAPI):
         data = {k: None for k in commands}
         data["multicommand"] = True
         for command in commands:
-            data[command] = await self.send_command(command)
+            # send_command records a transport failure; an answer the device
+            # marked as failed is not one. The batch goes on either way
+            try:
+                data[command] = await self.send_command(command)
+            except APIError:
+                data[command] = {}
         return data
 
     async def restart_epic(self) -> dict:

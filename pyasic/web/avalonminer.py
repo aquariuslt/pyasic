@@ -23,6 +23,7 @@ from typing import Any
 import httpx
 
 from pyasic import settings
+from pyasic.errors import APITransportError
 from pyasic.web.base import BaseWebAPI
 
 
@@ -58,14 +59,21 @@ class AvalonMinerWebAPI(BaseWebAPI):
         cookie_data = "ff0000ff" + hashlib.sha256(self.pwd.encode()).hexdigest()[:24]
 
         url = f"http://{self.ip}:{self.port}/{command}.cgi"
+        self._start_command(command)
         try:
             async with httpx.AsyncClient(transport=settings.transport()) as client:
                 client.cookies.set("auth", cookie_data)
                 resp = await client.get(url)
+                if resp.status_code != 200:
+                    self._record_transport_error(
+                        command, APITransportError(f"HTTP {resp.status_code}")
+                    )
                 raw_data = resp.text.replace("minerinfoCallback(", "").replace(");", "")
                 return json.loads(raw_data)
-        except (httpx.HTTPError, json.JSONDecodeError):
-            pass
+        except httpx.HTTPError as e:
+            self._record_transport_error(command, e)
+        except json.JSONDecodeError:
+            self._record_decode_failure(command)
         return {}
 
     async def multicommand(
@@ -92,13 +100,20 @@ class AvalonMinerWebAPI(BaseWebAPI):
     async def _handle_multicommand(
         self, client: httpx.AsyncClient, command: str
     ) -> dict:
+        self._start_command(command)
         try:
             url = f"http://{self.ip}:{self.port}/{command}.cgi"
             resp = await client.get(url)
+            if resp.status_code != 200:
+                self._record_transport_error(
+                    command, APITransportError(f"HTTP {resp.status_code}")
+                )
             raw_data = resp.text.replace("minerinfoCallback(", "").replace(");", "")
             return json.loads(raw_data)
-        except httpx.HTTPError:
-            pass
+        except httpx.HTTPError as e:
+            self._record_transport_error(command, e)
+        except json.JSONDecodeError:
+            self._record_decode_failure(command)
         return {}
 
     async def minerinfo(self):

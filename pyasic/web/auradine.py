@@ -23,7 +23,7 @@ from typing import Any
 import httpx
 
 from pyasic import settings
-from pyasic.errors import APIError
+from pyasic.errors import APIError, APITransportError
 from pyasic.misc import validate_command_output
 from pyasic.web.base import BaseWebAPI
 
@@ -95,6 +95,10 @@ class AuradineWebAPI(BaseWebAPI):
             await self.auth()
         async with httpx.AsyncClient(transport=settings.transport()) as client:
             for i in range(settings.get("get_data_retries", 1)):
+                self._start_command(command)
+                if self.token is None:
+                    self._record_missing_token(command)
+                    continue
                 try:
                     if post:
                         response = await client.post(
@@ -109,6 +113,11 @@ class AuradineWebAPI(BaseWebAPI):
                             headers={"Token": self.token},
                             timeout=settings.get("api_function_timeout", 5),
                         )
+                    if response.status_code != 200:
+                        self._record_transport_error(
+                            command,
+                            APITransportError(f"HTTP {response.status_code}"),
+                        )
                     json_data = response.json()
                     validation = validate_command_output(json_data)
                     if not validation[0]:
@@ -118,8 +127,10 @@ class AuradineWebAPI(BaseWebAPI):
                         await self.auth()
                         continue
                     return json_data
-                except (httpx.HTTPError, json.JSONDecodeError):
-                    pass
+                except httpx.HTTPError as e:
+                    self._record_transport_error(command, e)
+                except json.JSONDecodeError:
+                    self._record_decode_failure(command)
 
     async def multicommand(
         self, *commands: str, ignore_errors: bool = False, allow_warning: bool = True

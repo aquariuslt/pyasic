@@ -19,7 +19,18 @@ import warnings
 from abc import ABC, abstractmethod
 from typing import Any
 
-from pyasic.errors import APIWarning
+from pyasic.errors import (
+    AUTH_FAILURE_MESSAGE,
+    DECODE_FAILURE_MESSAGE,
+    APITransportError,
+    APIWarning,
+)
+
+# MinerData fields that some backends read through an endpoint of their own
+# instead of the multicommand. A failure there is recorded under the field
+# name, the only key that carries it back to the field it feeds
+SERIAL_NUMBER_FIELD = "serial_number"
+WATTAGE_FIELD = "wattage"
 
 
 def normalize_wattage_value(value: Any) -> int | None:
@@ -48,6 +59,15 @@ class BaseWebAPI(ABC):
         self.port = 80
 
         self.token = None
+        # transport failures since the last clear, keyed by command. The
+        # backends answer a failed request with an empty result, so this is
+        # what tells a field the device never answered from one it answered
+        # empty
+        self.transport_errors: dict[str, Exception] = {}
+        # requests sent and lost since the last clear, counted because a
+        # command sent twice keeps only its last outcome above
+        self.request_count = 0
+        self.failure_count = 0
 
     def __new__(cls, *args, **kwargs):
         if cls is BaseWebAPI:
@@ -73,6 +93,39 @@ class BaseWebAPI(ABC):
         self, *commands: str, ignore_errors: bool = False, allow_warning: bool = True
     ) -> dict:
         pass
+
+    def _record_transport_error(self, command: str | bytes, error: Exception) -> None:
+        # one failure per request: a request that records twice (an error
+        # status, then a body that will not parse) still failed once
+        if str(command) not in self.transport_errors:
+            self.failure_count += 1
+        self.transport_errors[str(command)] = error
+
+    def _start_command(self, command: str | bytes) -> None:
+        """Count the command as sent and forget an earlier failure of it:
+        each request decides its own transport outcome."""
+        self.request_count += 1
+        self.transport_errors.pop(str(command), None)
+
+    def _record_decode_failure(self, command: str | bytes) -> None:
+        self._record_transport_error(command, APITransportError(DECODE_FAILURE_MESSAGE))
+
+    def _record_missing_token(self, command: str | bytes) -> None:
+        """Record that this command was never sent, the login before it having
+        failed."""
+        self._record_transport_error(command, APITransportError(AUTH_FAILURE_MESSAGE))
+
+    def _record_endpoint_failure(self, field: str, response: dict) -> None:
+        """Record the failure of a request the backend made outside the
+        multicommand, under the field that request feeds."""
+        self._record_transport_error(
+            field, APITransportError(str(response.get("message")))
+        )
+
+    def _clear_transport_errors(self) -> None:
+        self.transport_errors.clear()
+        self.request_count = 0
+        self.failure_count = 0
 
     def _check_commands(self, *commands):
         allowed_commands = self.get_commands()

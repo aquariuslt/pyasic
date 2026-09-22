@@ -31,6 +31,18 @@ class APIError(Exception):
             return "Incorrect API parameters."
 
 
+class APITransportError(APIError):
+    """The command got no usable answer: connection refused, connect or read
+    timeout, an HTTP error status, or a body that is not the json the command
+    speaks. A parser failing on an answer that did come back is not one."""
+
+
+# what a transport error carries for the two failures with no exception of
+# their own to pass on
+DECODE_FAILURE_MESSAGE = "Failed to decode JSON"
+AUTH_FAILURE_MESSAGE = "Failed to authenticate"
+
+
 class PhaseBalancingError(Exception):
     def __init__(self, *args):
         if args:

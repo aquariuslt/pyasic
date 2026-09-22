@@ -16,13 +16,14 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import warnings
 from typing import Any
 
 import httpx
 
 from pyasic import settings
-from pyasic.errors import APIError
+from pyasic.errors import APIError, APITransportError
 from pyasic.web.base import BaseWebAPI
 
 
@@ -36,8 +37,17 @@ class IceRiverWebAPI(BaseWebAPI):
         self, *commands: str, ignore_errors: bool = False, allow_warning: bool = True
     ) -> dict:
         tasks = {c: asyncio.create_task(getattr(self, c)()) for c in commands}
-        await asyncio.gather(*[t for t in tasks.values()])
-        return {t: tasks[t].result() for t in tasks}
+        results = await asyncio.gather(*tasks.values(), return_exceptions=True)
+        data = {}
+        for command, result in zip(tasks, results):
+            if isinstance(result, APIError):
+                # on record by send_command; the batch goes on
+                data[command] = {}
+            elif isinstance(result, BaseException):
+                raise result
+            else:
+                data[command] = result
+        return data
 
     async def send_command(
         self,
@@ -56,16 +66,25 @@ class IceRiverWebAPI(BaseWebAPI):
                 )
             except httpx.HTTPError:
                 warnings.warn(f"Could not authenticate with miner web: {self}")
+            self._start_command(command)
             try:
                 resp = await client.post(
                     f"http://{self.ip}:{self.port}/user/{command}", params=parameters
                 )
                 if not resp.status_code == 200:
+                    self._record_transport_error(
+                        command, APITransportError(f"HTTP {resp.status_code}")
+                    )
                     if not ignore_errors:
                         raise APIError(f"Command failed: {command}")
                     warnings.warn(f"Command failed: {command}")
-                return resp.json()
-            except httpx.HTTPError:
+                try:
+                    return resp.json()
+                except json.JSONDecodeError:
+                    self._record_decode_failure(command)
+                    raise APIError(f"Command failed: {command}")
+            except httpx.HTTPError as e:
+                self._record_transport_error(command, e)
                 raise APIError(f"Command failed: {command}")
 
     async def locate(self, enable: bool):

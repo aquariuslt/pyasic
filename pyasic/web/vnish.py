@@ -22,6 +22,7 @@ from typing import Any
 import httpx
 
 from pyasic import settings
+from pyasic.errors import APITransportError
 from pyasic.web.base import BaseWebAPI
 
 
@@ -64,6 +65,10 @@ class VNishWebAPI(BaseWebAPI):
             await self.auth()
         async with httpx.AsyncClient(transport=settings.transport()) as client:
             for _ in range(settings.get("get_data_retries", 1)):
+                self._start_command(command)
+                if self.token is None:
+                    self._record_missing_token(command)
+                    continue
                 try:
                     auth = self.token
                     if command.startswith("system"):
@@ -83,6 +88,9 @@ class VNishWebAPI(BaseWebAPI):
                             timeout=settings.get("api_function_timeout", 5),
                         )
                     if not response.status_code == 200:
+                        self._record_transport_error(
+                            command, APITransportError(f"HTTP {response.status_code}")
+                        )
                         # refresh the token, retry
                         await self.auth()
                         continue
@@ -90,7 +98,11 @@ class VNishWebAPI(BaseWebAPI):
                     if json_data:
                         return json_data
                     return {"success": True}
-                except (httpx.HTTPError, json.JSONDecodeError, AttributeError):
+                except httpx.HTTPError as e:
+                    self._record_transport_error(command, e)
+                except json.JSONDecodeError:
+                    self._record_decode_failure(command)
+                except AttributeError:
                     pass
 
     async def multicommand(

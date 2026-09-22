@@ -13,7 +13,13 @@ import aiofiles
 import httpx
 
 from pyasic import settings
-from pyasic.web.base import BaseWebAPI, normalize_wattage_value
+from pyasic.errors import APITransportError
+from pyasic.web.base import (
+    SERIAL_NUMBER_FIELD,
+    WATTAGE_FIELD,
+    BaseWebAPI,
+    normalize_wattage_value,
+)
 
 
 class SpiderOSWebAPI(BaseWebAPI):
@@ -68,6 +74,7 @@ class SpiderOSWebAPI(BaseWebAPI):
     ) -> dict:
         url = f"http://{self.ip}:{self.port}/cgi-bin/{command}.cgi"
         auth = httpx.DigestAuth(self.username, self.pwd)
+        self._start_command(command)
         try:
             async with httpx.AsyncClient(transport=settings.transport()) as client:
                 if parameters:
@@ -84,6 +91,7 @@ class SpiderOSWebAPI(BaseWebAPI):
                         timeout=settings.get("api_function_timeout", 3),
                     )
         except httpx.HTTPError as e:
+            self._record_transport_error(command, e)
             return {
                 "success": False,
                 "message": f"HTTP error occurred: {type(e), str(e)}",
@@ -93,7 +101,11 @@ class SpiderOSWebAPI(BaseWebAPI):
                 try:
                     return data.json()
                 except json.decoder.JSONDecodeError:
+                    self._record_decode_failure(command)
                     return {"success": False, "message": "Failed to decode JSON"}
+            self._record_transport_error(
+                command, APITransportError(f"HTTP {data.status_code}")
+            )
             return {
                 "success": False,
                 "message": f"Unknown error occurred: {data.status_code, data.text}",
@@ -121,6 +133,7 @@ class SpiderOSWebAPI(BaseWebAPI):
     ) -> dict:
         auth = httpx.DigestAuth(self.username, self.pwd)
 
+        self._start_command(command)
         try:
             url = f"http://{self.ip}:{self.port}/cgi-bin/{command}.cgi"
             ret = await client.get(
@@ -128,15 +141,19 @@ class SpiderOSWebAPI(BaseWebAPI):
                 auth=auth,
                 timeout=settings.get("api_function_timeout", 3),
             )
-        except httpx.HTTPError:
-            pass
+        except httpx.HTTPError as e:
+            self._record_transport_error(command, e)
         else:
             if ret.status_code == 200:
                 try:
                     json_data = ret.json()
                     return {command: json_data}
                 except json.decoder.JSONDecodeError:
-                    pass
+                    self._record_decode_failure(command)
+            else:
+                self._record_transport_error(
+                    command, APITransportError(f"HTTP {ret.status_code}")
+                )
         return {command: {}}
 
     async def _invoke_http_get(self, path: str, port: int = None) -> dict:
@@ -385,14 +402,20 @@ class SpiderOSWebAPI(BaseWebAPI):
         return await self._update_firmware(file, **parameters)
 
     async def get_serial_number(self) -> dict:
+        self._start_command(SERIAL_NUMBER_FIELD)
         response = await self._invoke_http_get("get_sn", 6060)
-        if response.get("success") and response.get("data"):
+        if not response.get("success"):
+            self._record_endpoint_failure(SERIAL_NUMBER_FIELD, response)
+        elif response.get("data"):
             return {"serinum": response.get("data")}
         return {}
 
     async def get_wattage(self) -> dict:
+        self._start_command(WATTAGE_FIELD)
         response = await self._invoke_http_get("miner_power", 6060)
-        if response.get("success") and response.get("data"):
+        if not response.get("success"):
+            self._record_endpoint_failure(WATTAGE_FIELD, response)
+        elif response.get("data"):
             wattage = normalize_wattage_value(response.get("data"))
             if wattage is not None:
                 return {"wattage": wattage}

@@ -22,7 +22,7 @@ from typing import Any
 import httpx
 
 from pyasic import settings
-from pyasic.errors import APIError
+from pyasic.errors import APIError, APITransportError
 from pyasic.web.base import BaseWebAPI
 
 
@@ -59,6 +59,10 @@ class InnosiliconWebAPI(BaseWebAPI):
             await self.auth()
         async with httpx.AsyncClient(transport=settings.transport()) as client:
             for _ in range(settings.get("get_data_retries", 1)):
+                self._start_command(command)
+                if self.token is None:
+                    self._record_missing_token(command)
+                    continue
                 try:
                     response = await client.post(
                         f"http://{self.ip}:{self.port}/api/{command}",
@@ -66,6 +70,11 @@ class InnosiliconWebAPI(BaseWebAPI):
                         timeout=settings.get("api_function_timeout", 5),
                         json=parameters,
                     )
+                    if response.status_code != 200:
+                        self._record_transport_error(
+                            command,
+                            APITransportError(f"HTTP {response.status_code}"),
+                        )
                     json_data = response.json()
                     if (
                         not json_data.get("success")
@@ -82,8 +91,10 @@ class InnosiliconWebAPI(BaseWebAPI):
                             raise APIError(json_data["message"])
                         raise APIError("Innosilicon web api command failed.")
                     return json_data
-                except (httpx.HTTPError, json.JSONDecodeError):
-                    pass
+                except httpx.HTTPError as e:
+                    self._record_transport_error(command, e)
+                except json.JSONDecodeError:
+                    self._record_decode_failure(command)
 
     async def multicommand(
         self, *commands: str, ignore_errors: bool = False, allow_warning: bool = True
@@ -93,18 +104,27 @@ class InnosiliconWebAPI(BaseWebAPI):
         await self.auth()
         async with httpx.AsyncClient(transport=settings.transport()) as client:
             for command in commands:
+                self._start_command(command)
+                if self.token is None:
+                    self._record_missing_token(command)
+                    continue
                 try:
                     response = await client.post(
                         f"http://{self.ip}:{self.port}/api/{command}",
                         headers={"Authorization": "Bearer " + self.token},
                         timeout=settings.get("api_function_timeout", 5),
                     )
+                    if response.status_code != 200:
+                        self._record_transport_error(
+                            command,
+                            APITransportError(f"HTTP {response.status_code}"),
+                        )
                     json_data = response.json()
                     data[command] = json_data
-                except httpx.HTTPError:
-                    pass
+                except httpx.HTTPError as e:
+                    self._record_transport_error(command, e)
                 except json.JSONDecodeError:
-                    pass
+                    self._record_decode_failure(command)
                 except TypeError:
                     await self.auth()
         return data

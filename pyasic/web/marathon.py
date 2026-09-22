@@ -7,6 +7,7 @@ from typing import Any
 import httpx
 
 from pyasic import settings
+from pyasic.errors import APITransportError
 from pyasic.web.base import BaseWebAPI
 
 
@@ -36,18 +37,23 @@ class MaraWebAPI(BaseWebAPI):
     ) -> dict:
         auth = httpx.DigestAuth(self.username, self.pwd)
 
+        self._start_command(command)
         try:
             url = f"http://{self.ip}:{self.port}/kaonsu/v1/{command}"
             ret = await client.get(url, auth=auth)
-        except httpx.HTTPError:
-            pass
+        except httpx.HTTPError as e:
+            self._record_transport_error(command, e)
         else:
             if ret.status_code == 200:
                 try:
                     json_data = ret.json()
                     return {command: json_data}
                 except json.decoder.JSONDecodeError:
-                    pass
+                    self._record_decode_failure(command)
+            else:
+                self._record_transport_error(
+                    command, APITransportError(f"HTTP {ret.status_code}")
+                )
         return {command: {}}
 
     async def send_command(
@@ -60,6 +66,7 @@ class MaraWebAPI(BaseWebAPI):
     ) -> dict:
         url = f"http://{self.ip}:{self.port}/kaonsu/v1/{command}"
         auth = httpx.DigestAuth(self.username, self.pwd)
+        self._start_command(command)
         try:
             async with httpx.AsyncClient(
                 transport=settings.transport(),
@@ -73,14 +80,18 @@ class MaraWebAPI(BaseWebAPI):
                     )
                 else:
                     data = await client.get(url, auth=auth)
-        except httpx.HTTPError:
-            pass
+        except httpx.HTTPError as e:
+            self._record_transport_error(command, e)
         else:
             if data.status_code == 200:
                 try:
                     return data.json()
                 except json.decoder.JSONDecodeError:
-                    pass
+                    self._record_decode_failure(command)
+            else:
+                self._record_transport_error(
+                    command, APITransportError(f"HTTP {data.status_code}")
+                )
 
     async def brief(self):
         return await self.send_command("brief")

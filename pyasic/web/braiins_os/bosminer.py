@@ -21,7 +21,7 @@ from typing import Any
 import httpx
 
 from pyasic import settings
-from pyasic.errors import APIError
+from pyasic.errors import APIError, APITransportError
 from pyasic.web.base import BaseWebAPI
 
 
@@ -40,6 +40,7 @@ class BOSMinerWebAPI(BaseWebAPI):
         privileged: bool = False,
         **parameters: Any,
     ) -> dict:
+        self._start_command(command)
         try:
             async with httpx.AsyncClient(transport=settings.transport()) as client:
                 await self.auth(client)
@@ -49,24 +50,34 @@ class BOSMinerWebAPI(BaseWebAPI):
                 )
                 if data.status_code == 200:
                     return data.json()
+                self._record_transport_error(
+                    command, APITransportError(f"HTTP {data.status_code}")
+                )
                 if ignore_errors:
                     return {}
                 raise APIError(
                     f"LUCI web command failed: command={command}, code={data.status_code}"
                 )
-        except (httpx.HTTPError, json.JSONDecodeError):
-            if ignore_errors:
-                return {}
-            raise APIError(f"LUCI web command failed: command={command}")
+        except httpx.HTTPError as e:
+            self._record_transport_error(command, e)
+        except json.JSONDecodeError:
+            self._record_decode_failure(command)
+        if ignore_errors:
+            return {}
+        raise APIError(f"LUCI web command failed: command={command}")
 
     async def multicommand(
         self, *commands: str, ignore_errors: bool = False, allow_warning: bool = True
     ) -> dict:
         data = {}
         for command in commands:
-            data[command] = await self.send_command(
-                command, ignore_errors=ignore_errors
-            )
+            # on record by send_command; the batch goes on
+            try:
+                data[command] = await self.send_command(
+                    command, ignore_errors=ignore_errors
+                )
+            except APIError:
+                data[command] = {}
         return data
 
     async def auth(self, session: httpx.AsyncClient) -> None:

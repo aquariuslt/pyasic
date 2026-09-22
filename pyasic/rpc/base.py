@@ -22,8 +22,16 @@ import re
 import warnings
 from typing import Union
 
-from pyasic.errors import APIError, APIWarning
+from pyasic.errors import (
+    DECODE_FAILURE_MESSAGE,
+    APIError,
+    APITransportError,
+    APIWarning,
+)
 from pyasic.misc import validate_command_output
+
+# the rpc multicommand joins its commands with this
+_MULTICOMMAND_SEPARATOR = "+"
 
 
 class BaseMinerRPCAPI:
@@ -36,6 +44,11 @@ class BaseMinerRPCAPI:
         self.api_ver = api_ver
 
         self.pwd = None
+        # transport failures of the commands sent since the last clear, keyed
+        # by command; see BaseWebAPI.transport_errors
+        self.transport_errors: dict[str, Exception] = {}
+        self.request_count = 0
+        self.failure_count = 0
 
     def __new__(cls, *args, **kwargs):
         if cls is BaseMinerRPCAPI:
@@ -77,18 +90,37 @@ class BaseMinerRPCAPI:
         if parameters:
             cmd["parameter"] = parameters
 
-        # send the command
-        data = await self._send_bytes(json.dumps(cmd).encode("utf-8"), timeout=timeout)
+        # send the command; this attempt decides the command's transport
+        # outcome, so a record from an earlier one must not outlive it
+        self._start_command(command)
+        try:
+            data = await self._send_bytes(
+                json.dumps(cmd).encode("utf-8"), timeout=timeout
+            )
+        except APITransportError as e:
+            self._record_transport_error(command, e)
+            data = b"{}"
 
         if data is None:
             raise APIError("No data returned from the API.")
 
         if data == b"Socket connect failed: Connection refused\n":
+            self._record_transport_error(
+                command, APITransportError(data.decode("utf-8").strip())
+            )
             if not ignore_errors:
                 raise APIError(data.decode("utf-8"))
             return {}
 
-        data = self._load_api_data(data)
+        try:
+            data = self._load_api_data(data)
+        except APIError:
+            # a body that will not parse leaves the caller with nothing, the
+            # same as an answer that never arrived
+            self._record_transport_error(
+                command, APITransportError(DECODE_FAILURE_MESSAGE)
+            )
+            raise
 
         # check for if the user wants to allow errors to return
         validation = validate_command_output(data)
@@ -180,6 +212,31 @@ class BaseMinerRPCAPI:
             ]
         ]
 
+    @staticmethod
+    def _split_command_names(command: Union[str, bytes]) -> list[str]:
+        # a joined multicommand fails as a whole, so each of its commands is
+        # the one the data locations look up
+        return str(command).split(_MULTICOMMAND_SEPARATOR)
+
+    def _record_transport_error(
+        self, command: Union[str, bytes], error: Exception
+    ) -> None:
+        for name in self._split_command_names(command):
+            if name not in self.transport_errors:
+                self.failure_count += 1
+            self.transport_errors[name] = error
+
+    def _start_command(self, command: Union[str, bytes]) -> None:
+        # counted per joined name, the unit the failures are recorded in
+        for name in self._split_command_names(command):
+            self.request_count += 1
+            self.transport_errors.pop(name, None)
+
+    def _clear_transport_errors(self) -> None:
+        self.transport_errors.clear()
+        self.request_count = 0
+        self.failure_count = 0
+
     def _check_commands(self, *commands) -> list:
         allowed_commands = self.commands
         return_commands = []
@@ -214,7 +271,7 @@ If you are sure you want to use this command please use API.send_command("{comma
                 logging.warning(
                     f"{self} - ([Hidden] Send Bytes) - Semaphore timeout expired."
                 )
-            return b"{}"
+            raise APITransportError(f"Connect failed: {e}") from e
 
         # send the command
         try:
@@ -226,14 +283,18 @@ If you are sure you want to use this command please use API.send_command("{comma
 
             await data_task
             ret_data = data_task.result()
-        except TimeoutError:
+        except TimeoutError as e:
             logging.warning(f"{self} - ([Hidden] Send Bytes) - Read timeout expired.")
-            return b"{}"
+            raise APITransportError(f"Read timeout after {timeout}s") from e
 
         # close the connection
         logging.debug(f"{self} - ([Hidden] Send Bytes) - Closing")
-        writer.close()
-        await writer.wait_closed()
+        try:
+            writer.close()
+            await writer.wait_closed()
+        except OSError as e:
+            # the answer is already read, so the close is the last word
+            logging.debug(f"{self} - ([Hidden] Send Bytes) - Close failed: {e}")
 
         return ret_data
 

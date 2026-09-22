@@ -8,7 +8,13 @@ import httpx
 import requests
 
 from pyasic import settings
-from pyasic.web.base import BaseWebAPI, normalize_wattage_value
+from pyasic.errors import DECODE_FAILURE_MESSAGE, APITransportError
+from pyasic.web.base import (
+    SERIAL_NUMBER_FIELD,
+    WATTAGE_FIELD,
+    BaseWebAPI,
+    normalize_wattage_value,
+)
 
 
 class HttpClient:
@@ -92,6 +98,7 @@ class BitfufuAntminerWebAPI(BaseWebAPI):
         """
         url = f"http://{self.ip}:{self.port}/cgi-bin/{command}.cgi"
         auth = httpx.DigestAuth(self.username, self.pwd)
+        self._start_command(command)
         try:
             async with httpx.AsyncClient(transport=settings.transport()) as client:
 
@@ -105,6 +112,7 @@ class BitfufuAntminerWebAPI(BaseWebAPI):
                 else:
                     data = await client.get(url, auth=auth)
         except httpx.HTTPError as e:
+            self._record_transport_error(command, e)
             return {
                 "success": False,
                 "message": f"HTTP error occurred: {type(e), str(e)}",
@@ -114,8 +122,12 @@ class BitfufuAntminerWebAPI(BaseWebAPI):
                 try:
                     return data.json()
                 except json.decoder.JSONDecodeError:
-                    return {"success": False, "message": "Failed to decode JSON"}
+                    self._record_decode_failure(command)
+                    return {"success": False, "message": DECODE_FAILURE_MESSAGE}
             else:
+                self._record_transport_error(
+                    command, APITransportError(f"HTTP {data.status_code}")
+                )
                 return {
                     "success": False,
                     "message": f"Unknown error occurred: {data.status_code, data.text}",
@@ -387,18 +399,23 @@ class BitfufuAntminerWebAPI(BaseWebAPI):
         """
         auth = httpx.DigestAuth(self.username, self.pwd)
 
+        self._start_command(command)
         try:
             url = f"http://{self.ip}/cgi-bin/{command}.cgi"
             ret = await client.get(url, auth=auth)
-        except httpx.HTTPError:
-            pass
+        except httpx.HTTPError as e:
+            self._record_transport_error(command, e)
         else:
             if ret.status_code == 200:
                 try:
                     json_data = ret.json()
                     return {command: json_data}
                 except json.decoder.JSONDecodeError:
-                    pass
+                    self._record_decode_failure(command)
+            else:
+                self._record_transport_error(
+                    command, APITransportError(f"HTTP {ret.status_code}")
+                )
         return {command: {}}
 
     async def _invoke_http_get(self, path: str, port: int = None) -> dict:
@@ -424,6 +441,11 @@ class BitfufuAntminerWebAPI(BaseWebAPI):
             return {
                 "success": False,
                 "message": f"Timeout error occurred: {type(e), str(e)}",
+            }
+        except requests.exceptions.ConnectionError as e:
+            return {
+                "success": False,
+                "message": f"Connection error occurred: {type(e), str(e)}",
             }
         else:
             if data.status_code == 200:
@@ -451,8 +473,11 @@ class BitfufuAntminerWebAPI(BaseWebAPI):
         Returns:
             dict: A dictionary containing the serial number of the miner.
         """
+        self._start_command(SERIAL_NUMBER_FIELD)
         response = await self._invoke_http_get("get_sn", 6060)
-        if response.get("success") and response.get("data"):
+        if not response.get("success"):
+            self._record_endpoint_failure(SERIAL_NUMBER_FIELD, response)
+        elif response.get("data"):
             return {
                 "serinum": response.get("data"),
             }
@@ -465,8 +490,11 @@ class BitfufuAntminerWebAPI(BaseWebAPI):
         Returns:
             dict: A dictionary containing the power of the miner.
         """
+        self._start_command(WATTAGE_FIELD)
         response = await self._invoke_http_get("get_power", 6060)
-        if response.get("success") and response.get("data"):
+        if not response.get("success"):
+            self._record_endpoint_failure(WATTAGE_FIELD, response)
+        elif response.get("data"):
             wattage = normalize_wattage_value(response.get("data"))
             if wattage is not None:
                 return {

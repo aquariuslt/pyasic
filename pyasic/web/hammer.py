@@ -22,6 +22,7 @@ from typing import Any
 import httpx
 
 from pyasic import settings
+from pyasic.errors import APITransportError
 from pyasic.web.base import BaseWebAPI
 
 
@@ -58,6 +59,7 @@ class HammerWebAPI(BaseWebAPI):
         """
         url = f"http://{self.ip}:{self.port}/cgi-bin/{command}.cgi"
         auth = httpx.DigestAuth(self.username, self.pwd)
+        self._start_command(command)
         try:
             async with httpx.AsyncClient(transport=settings.transport()) as client:
 
@@ -71,13 +73,18 @@ class HammerWebAPI(BaseWebAPI):
                 else:
                     data = await client.get(url, auth=auth)
         except httpx.HTTPError as e:
+            self._record_transport_error(command, e)
             return {"success": False, "message": f"HTTP error occurred: {str(e)}"}
         else:
             if data.status_code == 200:
                 try:
                     return data.json()
                 except json.decoder.JSONDecodeError:
+                    self._record_decode_failure(command)
                     return {"success": False, "message": "Failed to decode JSON"}
+            self._record_transport_error(
+                command, APITransportError(f"HTTP {data.status_code}")
+            )
         return {"success": False, "message": "Unknown error occurred"}
 
     async def multicommand(
@@ -121,18 +128,23 @@ class HammerWebAPI(BaseWebAPI):
         """
         auth = httpx.DigestAuth(self.username, self.pwd)
 
+        self._start_command(command)
         try:
             url = f"http://{self.ip}/cgi-bin/{command}.cgi"
             ret = await client.get(url, auth=auth)
-        except httpx.HTTPError:
-            pass
+        except httpx.HTTPError as e:
+            self._record_transport_error(command, e)
         else:
             if ret.status_code == 200:
                 try:
                     json_data = ret.json()
                     return {command: json_data}
                 except json.decoder.JSONDecodeError:
-                    pass
+                    self._record_decode_failure(command)
+            else:
+                self._record_transport_error(
+                    command, APITransportError(f"HTTP {ret.status_code}")
+                )
         return {command: {}}
 
     async def get_miner_conf(self) -> dict:

@@ -17,7 +17,7 @@ import asyncio
 import ipaddress
 import warnings
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Protocol, Tuple, Type, TypeVar, Union
+from typing import Any, Dict, List, Optional, Protocol, Tuple, Type, TypeVar, Union
 
 from pyasic.config import MinerConfig
 from pyasic.data import Fan, HashBoard, MinerData, PowerSupply
@@ -35,15 +35,54 @@ from pyasic.errors import APIError
 from pyasic.logger import logger
 from pyasic.miners.data import DataLocations, DataOptions, RPCAPICommand, WebAPICommand
 
+# each interface's failures by command, then the requests sent and lost
+_TransportSnapshot = Tuple[Dict[str, Exception], Dict[str, Exception], int, int]
+
+
+def _carries_device_data(value: Any) -> bool:
+    """Whether a parsed value holds anything the device answered. Parsers
+    answer a failed request with what the model definition alone can build,
+    so an empty container, or one holding nothing but empty values, proves
+    nothing; zero and False are answers and count. This reads the shape only,
+    so a container the parser refills with values of its own reads as data."""
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return len(value) > 0
+    dump = getattr(value, "model_dump", None)
+    if callable(dump):
+        value = dump()
+    if isinstance(value, dict):
+        return any(_carries_device_data(item) for item in value.values())
+    if isinstance(value, (list, tuple, set)):
+        return any(_carries_device_data(item) for item in value)
+    return True
+
 
 @dataclass
 class MinerDataReadResult:
-    """Outcome of `get_data_with_field_errors`: the data with every field that
-    parsed, plus the parser exception of every requested field that did not.
-    A field listed in `field_errors` keeps its default value on `data`."""
+    """Outcome of `get_data_with_errors`: `data` carries every field that was
+    read, and the two maps say why each of the others is missing. A field
+    served by a fallback source is in neither, however many requests behind
+    it failed; a field can be in both.
+
+    `field_parse_errors`: what this field's parser raised. The field keeps
+    its default value on `data`.
+
+    `field_transport_errors`: the failure of a request behind this field,
+    which was left without device data as a result. It says "not read", as
+    opposed to "the device has nothing here", which is what a caller keeping
+    the last known value needs. Reliable for the scalar fields; a parser that
+    refills a container from the model definition reads as data.
+
+    `all_requests_failed`: not one of the requests this read sent got an
+    answer. Counted per request, and False as soon as one gets through. It is
+    a transport verdict, not a reachability or a data one."""
 
     data: MinerData
-    field_errors: Dict[str, Exception] = field(default_factory=dict)
+    field_parse_errors: Dict[str, Exception] = field(default_factory=dict)
+    field_transport_errors: Dict[str, Exception] = field(default_factory=dict)
+    all_requests_failed: bool = False
 
 
 class MinerProtocol(Protocol):
@@ -485,10 +524,15 @@ class MinerProtocol(Protocol):
         allow_warning: bool,
         include: List[Union[str, DataOptions]] = None,
         exclude: List[Union[str, DataOptions]] = None,
-    ) -> Tuple[dict, Dict[str, Exception]]:
+    ) -> Tuple[dict, Dict[str, Exception], Dict[str, Exception], bool]:
         # one parser raising must not discard the fields already parsed: the
         # commands were all sent before parsing started, so every failure is
         # collected and the caller decides whether to raise
+        # only the failures of this read count: the interfaces keep recording
+        # across single commands sent outside get_data
+        for interface in (self.rpc, self.web):
+            if interface is not None:
+                interface._clear_transport_errors()
         # handle include
         if include is not None:
             include = [str(i) for i in include]
@@ -521,33 +565,19 @@ class MinerProtocol(Protocol):
                 logger.error(type(e), e, data_name)
                 continue
 
-        # create tasks for all commands that need to be sent, or no-op with sleep(0) -> None
-        if len(rpc_multicommand) > 0:
-            rpc_command_task = asyncio.create_task(
-                self.rpc.multicommand(*rpc_multicommand, allow_warning=allow_warning)
-            )
-        else:
-            rpc_command_task = asyncio.create_task(asyncio.sleep(0))
-        if len(web_multicommand) > 0:
-            web_command_task = asyncio.create_task(
-                self.web.multicommand(*web_multicommand, allow_warning=allow_warning)
-            )
-        else:
-            web_command_task = asyncio.create_task(asyncio.sleep(0))
-
-        # make sure the tasks complete
-        await asyncio.gather(rpc_command_task, web_command_task)
-
-        # grab data out of the tasks
-        web_command_data = web_command_task.result()
-        if web_command_data is None:
-            web_command_data = {}
-        api_command_data = rpc_command_task.result()
-        if api_command_data is None:
-            api_command_data = {}
-
+        api_command_data, web_command_data = await asyncio.gather(
+            self._send_multicommand(self.rpc, rpc_multicommand, allow_warning),
+            self._send_multicommand(self.web, web_multicommand, allow_warning),
+        )
+        # read before any parser runs, since a parser asking the device again
+        # rewrites the interface's record for that command. _settle_field
+        # charges what a parser loses to that parser's own field
+        rpc_failures, web_failures, *_ = self._transport_snapshot()
+        field_transport_errors = self._collect_transport_errors(
+            include, rpc_failures, web_failures
+        )
         miner_data = {}
-        field_errors: Dict[str, Exception] = {}
+        field_parse_errors: Dict[str, Exception] = {}
 
         for data_name in include:
             try:
@@ -571,12 +601,131 @@ class MinerProtocol(Protocol):
                         args_to_send[arg.name] = None
             except LookupError:
                 continue
+            before_parser = self._transport_snapshot()
             try:
                 function = getattr(self, getattr(self.data_locations, data_name).cmd)
                 miner_data[data_name] = await function(**args_to_send)
             except Exception as e:
-                field_errors[data_name] = e
-        return miner_data, field_errors
+                field_parse_errors[data_name] = e
+            self._settle_field(
+                data_name,
+                miner_data.get(data_name),
+                before_parser,
+                field_transport_errors,
+            )
+        return (
+            miner_data,
+            field_parse_errors,
+            field_transport_errors,
+            self._all_requests_failed(),
+        )
+
+    @staticmethod
+    async def _send_multicommand(
+        interface: Any, commands: set, allow_warning: bool
+    ) -> dict:
+        """The interface's answer to these commands, or an empty answer when
+        there are none. A backend that raises on a failed request has that
+        failure recorded under every command of the batch, leaving the other
+        interface's answer intact."""
+        if not commands:
+            return {}
+        try:
+            answer = await interface.multicommand(
+                *commands, allow_warning=allow_warning
+            )
+        except APIError as e:
+            for command in commands:
+                if command not in interface.transport_errors:
+                    interface._start_command(command)
+                    interface._record_transport_error(command, e)
+            return {}
+        return {} if answer is None else answer
+
+    def _transport_snapshot(self) -> _TransportSnapshot:
+        """Where transport stands right now: the rpc and web failures by
+        command, and the requests sent and lost across both."""
+        interfaces = [i for i in (self.rpc, self.web) if i is not None]
+        return (
+            dict(self.rpc.transport_errors) if self.rpc is not None else {},
+            dict(self.web.transport_errors) if self.web is not None else {},
+            sum(i.request_count for i in interfaces),
+            sum(i.failure_count for i in interfaces),
+        )
+
+    def _failure_since(self, before: _TransportSnapshot) -> Optional[Exception]:
+        """A failure recorded since `before` was taken, if any."""
+        for interface, earlier in zip((self.rpc, self.web), before):
+            if interface is None:
+                continue
+            for command, error in interface.transport_errors.items():
+                if earlier.get(command) is not error:
+                    return error
+        return None
+
+    def _settle_field(
+        self,
+        data_name: str,
+        value: Any,
+        before: _TransportSnapshot,
+        field_transport_errors: Dict[str, Exception],
+    ) -> None:
+        """Record whether this field was read, now that its parser has run.
+        Data from any source settles it, a fallback that answered included
+        (antminer macs fall back from get_system_info to get_network_info).
+        A field left empty keeps the multicommand phase's verdict when its
+        parser asked nothing of its own, counts as answered when its own
+        requests all got through, and carries the failure of one that did
+        not."""
+        if _carries_device_data(value):
+            field_transport_errors.pop(data_name, None)
+            return
+        *_, sent_before, failed_before = before
+        *_, sent_after, failed_after = self._transport_snapshot()
+        if sent_after == sent_before:
+            return
+        if failed_after == failed_before:
+            field_transport_errors.pop(data_name, None)
+            return
+        own_failure = self._failure_since(before)
+        if own_failure is not None:
+            field_transport_errors.setdefault(data_name, own_failure)
+
+    def _all_requests_failed(self) -> bool:
+        """Whether not one request this read sent got an answer. Counted per
+        request, so a command sent twice with one answer counts as answered,
+        and read once the parsers are done, so fallbacks count too."""
+        *_, sent, failed = self._transport_snapshot()
+        return sent > 0 and failed == sent
+
+    def _collect_transport_errors(
+        self,
+        include: List[str],
+        rpc_failures: Dict[str, Exception],
+        web_failures: Dict[str, Exception],
+    ) -> Dict[str, Exception]:
+        """The requested fields whose rpc or web command failed during the
+        multicommand phase, keyed by field. A field fed by several commands is
+        listed when any of them failed: its parser then saw a partial answer,
+        so its value cannot be trusted as complete."""
+        field_transport_errors: Dict[str, Exception] = {}
+        for data_name in include:
+            # a backend reading a field through an endpoint of its own records
+            # the failure under the field name
+            failures = [
+                rpc_failures.get(data_name),
+                web_failures.get(data_name),
+            ]
+            location = getattr(self.data_locations, data_name, None)
+            for arg in location.kwargs if location is not None else []:
+                if isinstance(arg, RPCAPICommand):
+                    failures.append(rpc_failures.get(arg.cmd))
+                elif isinstance(arg, WebAPICommand):
+                    failures.append(web_failures.get(arg.cmd))
+            found = next((failure for failure in failures if failure is not None), None)
+            if found is not None:
+                field_transport_errors[data_name] = found
+        return field_transport_errors
 
     async def get_data(
         self,
@@ -596,18 +745,20 @@ class MinerProtocol(Protocol):
 
         Raises:
             APIError: When the parser of any requested data item fails. Use
-                `get_data_with_field_errors` to keep the other items instead.
+                `get_data_with_errors` to keep the other items instead.
         """
-        result = await self.get_data_with_field_errors(
+        result = await self.get_data_with_errors(
             allow_warning=allow_warning, include=include, exclude=exclude
         )
-        for data_name, error in result.field_errors.items():
+        for data_name, error in result.field_parse_errors.items():
+            # the command that never got through is the cause; a parser
+            # choking on the empty answer is the symptom
             raise APIError(
                 f"Failed to call {data_name} on {self} while getting data."
-            ) from error
+            ) from result.field_transport_errors.get(data_name, error)
         return result.data
 
-    async def get_data_with_field_errors(
+    async def get_data_with_errors(
         self,
         allow_warning: bool = False,
         include: List[Union[str, DataOptions]] = None,
@@ -623,9 +774,11 @@ class MinerProtocol(Protocol):
 
         Returns:
             A [`MinerDataReadResult`][pyasic.miners.base.MinerDataReadResult]: the
-            [`MinerData`][pyasic.data.MinerData] with every parsed item set, and the
-            exception of each requested item whose parser failed, keyed by item name.
-            Failed items keep their default value on the data.
+            [`MinerData`][pyasic.data.MinerData] with every parsed item set, the
+            exception of each requested item whose parser failed, and the
+            transport failure of each requested item whose command got no
+            answer, both keyed by item name. Failed items keep their default
+            value on the data.
         """
         data = MinerData(
             ip=str(self.ip),
@@ -647,13 +800,23 @@ class MinerProtocol(Protocol):
             ],
         )
 
-        gathered_data, field_errors = await self._get_data(
+        (
+            gathered_data,
+            field_parse_errors,
+            field_transport_errors,
+            all_requests_failed,
+        ) = await self._get_data(
             allow_warning=allow_warning, include=include, exclude=exclude
         )
         for item in gathered_data:
             if gathered_data[item] is not None:
                 setattr(data, item, gathered_data[item])
-        return MinerDataReadResult(data=data, field_errors=field_errors)
+        return MinerDataReadResult(
+            data=data,
+            field_parse_errors=field_parse_errors,
+            field_transport_errors=field_transport_errors,
+            all_requests_failed=all_requests_failed,
+        )
 
 
 class BaseMiner(MinerProtocol):

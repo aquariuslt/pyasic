@@ -32,23 +32,23 @@ def test_get_data_still_raises_api_error_naming_the_failed_field(monkeypatch):
     assert isinstance(raised.value.__cause__, KeyError)
 
 
-def test_get_data_with_field_errors_keeps_the_fields_that_parsed(monkeypatch):
+def test_get_data_with_errors_keeps_the_fields_that_parsed(monkeypatch):
     miner = _miner_with_one_failing_parser(monkeypatch)
 
-    result = asyncio.run(miner.get_data_with_field_errors(include=INCLUDE))
+    result = asyncio.run(miner.get_data_with_errors(include=INCLUDE))
 
     assert result.data.uptime == 123
     assert result.data.hostname == "miner-1"
     assert result.data.wattage is None
-    assert list(result.field_errors) == ["wattage"]
-    assert isinstance(result.field_errors["wattage"], KeyError)
+    assert list(result.field_parse_errors) == ["wattage"]
+    assert isinstance(result.field_parse_errors["wattage"], KeyError)
 
 
-def test_get_data_with_field_errors_is_empty_when_every_field_parses(monkeypatch):
+def test_get_data_with_errors_is_empty_when_every_field_parses(monkeypatch):
     miner = _miner_with_one_failing_parser(monkeypatch)
     monkeypatch.setattr(miner, "_get_wattage", AsyncMock(return_value=3000))
 
-    result = asyncio.run(miner.get_data_with_field_errors(include=INCLUDE))
+    result = asyncio.run(miner.get_data_with_errors(include=INCLUDE))
 
     assert result.data.wattage == 3000
-    assert result.field_errors == {}
+    assert result.field_parse_errors == {}

@@ -7,6 +7,7 @@ from typing import Any
 import httpx
 
 from pyasic import APIError, settings
+from pyasic.errors import APITransportError
 from pyasic.web.base import BaseWebAPI
 
 
@@ -22,6 +23,7 @@ class ESPMinerWebAPI(BaseWebAPI):
         url = f"http://{self.ip}:{self.port}/api/{command}"
         async with httpx.AsyncClient(transport=settings.transport()) as client:
             for _ in range(settings.get("get_data_retries", 1)):
+                self._start_command(command)
                 try:
                     if parameters.get("post", False):
                         parameters.pop("post")
@@ -42,14 +44,18 @@ class ESPMinerWebAPI(BaseWebAPI):
                             url,
                             timeout=settings.get("api_function_timeout", 5),
                         )
-                except httpx.HTTPError:
-                    pass
+                except httpx.HTTPError as e:
+                    self._record_transport_error(command, e)
                 else:
                     if data.status_code == 200:
                         try:
                             return data.json()
                         except json.decoder.JSONDecodeError:
-                            pass
+                            self._record_decode_failure(command)
+                    else:
+                        self._record_transport_error(
+                            command, APITransportError(f"HTTP {data.status_code}")
+                        )
 
     async def multicommand(
         self, *commands: str, ignore_errors: bool = False, allow_warning: bool = True

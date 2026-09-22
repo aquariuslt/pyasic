@@ -30,7 +30,7 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from passlib.handlers.md5_crypt import md5_crypt
 
 from pyasic import settings
-from pyasic.errors import APIError
+from pyasic.errors import APIError, APITransportError
 from pyasic.misc import api_min_version, validate_command_output
 from pyasic.rpc.base import BaseMinerRPCAPI
 
@@ -282,6 +282,9 @@ class BTMinerRPCAPI(BaseMinerRPCAPI):
             if ignore_errors:
                 return {}
             raise APIError("No data was returned from the API.")
+        except APITransportError as e:
+            self._record_transport_error(command["cmd"], e)
+            return {}
 
         if not data:
             if ignore_errors:
@@ -371,7 +374,7 @@ class BTMinerRPCAPI(BaseMinerRPCAPI):
                 await self._send_bytes(
                     binascii.unhexlify(command), timeout=3, port=8889
                 )
-            except asyncio.TimeoutError:
+            except (asyncio.TimeoutError, APITransportError):
                 pass
         return True
 

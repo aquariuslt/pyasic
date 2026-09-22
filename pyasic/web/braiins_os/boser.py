@@ -106,6 +106,7 @@ class BOSerWebAPI(BaseWebAPI):
         metadata = []
         if privileged:
             metadata.append(("authorization", await self.auth()))
+        self._start_command(command)
         try:
             async with Channel(self.ip, self.port) as c:
                 endpoint = getattr(BOSMinerGRPCStub(c), command)
@@ -122,6 +123,7 @@ class BOSerWebAPI(BaseWebAPI):
                         return (await endpoint(message, metadata=metadata)).to_pydict()
                     raise e
         except (GRPCError, ConnectionError) as e:
+            self._record_transport_error(command, e)
             raise APIError(f"gRPC command failed - {endpoint}") from e
 
     async def auth(self) -> str | None:

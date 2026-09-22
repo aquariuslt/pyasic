@@ -23,6 +23,7 @@ import aiofiles
 import httpx
 
 from pyasic import settings
+from pyasic.errors import APITransportError
 from pyasic.web.base import BaseWebAPI
 
 
@@ -59,6 +60,7 @@ class HiveonWebAPI(BaseWebAPI):
         """
         url = f"http://{self.ip}:{self.port}/cgi-bin/{command}.cgi"
         auth = httpx.DigestAuth(self.username, self.pwd)
+        self._start_command(command)
         try:
             async with httpx.AsyncClient(transport=settings.transport()) as client:
                 if parameters:
@@ -70,14 +72,18 @@ class HiveonWebAPI(BaseWebAPI):
                     )
                 else:
                     data = await client.get(url, auth=auth)
-        except httpx.HTTPError:
-            pass
+        except httpx.HTTPError as e:
+            self._record_transport_error(command, e)
         else:
             if data.status_code == 200:
                 try:
                     return data.json()
                 except json.decoder.JSONDecodeError:
-                    pass
+                    self._record_decode_failure(command)
+            else:
+                self._record_transport_error(
+                    command, APITransportError(f"HTTP {data.status_code}")
+                )
 
     async def multicommand(
         self, *commands: str, ignore_errors: bool = False, allow_warning: bool = True
@@ -96,18 +102,23 @@ class HiveonWebAPI(BaseWebAPI):
         auth = httpx.DigestAuth(self.username, self.pwd)
         async with httpx.AsyncClient(transport=settings.transport()) as client:
             for command in commands:
+                self._start_command(command)
                 try:
                     url = f"http://{self.ip}/cgi-bin/{command}.cgi"
                     ret = await client.get(url, auth=auth)
-                except httpx.HTTPError:
-                    pass
+                except httpx.HTTPError as e:
+                    self._record_transport_error(command, e)
                 else:
                     if ret.status_code == 200:
                         try:
                             json_data = ret.json()
                             data[command] = json_data
                         except json.decoder.JSONDecodeError:
-                            pass
+                            self._record_decode_failure(command)
+                    else:
+                        self._record_transport_error(
+                            command, APITransportError(f"HTTP {ret.status_code}")
+                        )
         return data
 
     async def get_system_info(self) -> dict:
