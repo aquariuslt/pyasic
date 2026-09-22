@@ -1,8 +1,16 @@
 import asyncio
+import ipaddress
 from unittest.mock import AsyncMock
 
 from pyasic.miners.antminer.bmminer.X19.S19 import BMMinerS19XPHydro
-from pyasic.miners.factory import MinerFactory, MinerIdentifyStatus, MinerTypes
+from pyasic.miners.antminer.hiveon.X19.S19 import HiveonS19
+from pyasic.miners.factory import (
+    HiveonModern,
+    MinerFactory,
+    MinerIdentifyStatus,
+    MinerTypes,
+    _resolves_to_miner_class,
+)
 
 IP = "10.10.101.10"
 BOARD_CODE = "Antminer HHB56XXX"
@@ -114,3 +122,31 @@ def test_identify_resolves_the_web_model_when_rpc_reports_a_board_code(monkeypat
 
     assert result.status is MinerIdentifyStatus.IDENTIFIED
     assert isinstance(result.miner, BMMinerS19XPHydro)
+
+
+HIVEON_MODEL = "Antminer S19 Hiveon"
+
+
+def test_both_class_table_lookups_agree_on_a_hiveon_model():
+    # the probe picks a model by asking whether the table holds a class for
+    # it, and identification then asks the table for that class; one rule
+    # keyed both, so they cannot disagree
+    assert _resolves_to_miner_class(MinerTypes.ANTMINER, HIVEON_MODEL)
+
+    miner = MinerFactory._select_miner_from_classes(
+        ip=ipaddress.ip_address(IP),
+        miner_model=HIVEON_MODEL,
+        miner_type=MinerTypes.ANTMINER,
+    )
+
+    assert isinstance(miner, HiveonS19)
+
+
+def test_a_hiveon_model_outside_the_table_falls_back_to_the_hiveon_class():
+    miner = MinerFactory._select_miner_from_classes(
+        ip=ipaddress.ip_address(IP),
+        miner_model="Antminer Z99 Hiveon",
+        miner_type=MinerTypes.ANTMINER,
+    )
+
+    assert isinstance(miner, HiveonModern)

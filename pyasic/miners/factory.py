@@ -855,17 +855,28 @@ MINER_CLASSES = {
 }
 
 
-def _resolves_to_miner_class(miner_type: MinerTypes, miner_model: str | None) -> bool:
-    """Whether the class table holds a class for this model, read the way
-    `_select_miner_from_classes` reads it: a hiveon miner answers with the
-    antminer model plus that word, and its class lives under the stripped
-    name in the hiveon table."""
+def _class_table_key(
+    miner_type: MinerTypes | None, miner_model: str | None
+) -> tuple[MinerTypes | None, str]:
+    """The (type, model) the class table is keyed by. Hiveon miners answer with
+    the antminer model plus that word, and their classes live under the
+    stripped name in the hiveon table. Every lookup of the table goes through
+    here, so a model the probes report and the class it resolves to cannot
+    drift apart."""
+    model_key = str(miner_model).upper()
+    if "HIVEON" in model_key:
+        return MinerTypes.HIVEON, model_key.replace(" HIVEON", "")
+    return miner_type, model_key
+
+
+def _resolves_to_miner_class(
+    miner_type: MinerTypes | None, miner_model: str | None
+) -> bool:
+    """Whether the class table holds a class for this model."""
     if miner_model is None:
         return False
-    normalized = str(miner_model).upper()
-    if "HIVEON" in normalized:
-        return normalized.replace(" HIVEON", "") in MINER_CLASSES[MinerTypes.HIVEON]
-    return normalized in MINER_CLASSES.get(miner_type, {})
+    table_type, model_key = _class_table_key(miner_type, miner_model)
+    return model_key in MINER_CLASSES.get(table_type, {})
 
 
 async def _cancel_tasks(tasks: list) -> None:
@@ -1360,20 +1371,17 @@ class MinerFactory:
         miner_model: str | None,
         miner_type: MinerTypes | None,
     ) -> AnyMiner | None:
-        # special case since hiveon miners return web results copying the antminer stock FW
-        if "HIVEON" in str(miner_model).upper():
-            miner_model = str(miner_model).upper().replace(" HIVEON", "")
-            miner_type = MinerTypes.HIVEON
+        table_type, model_key = _class_table_key(miner_type, miner_model)
         try:
-            return MINER_CLASSES[miner_type][str(miner_model).upper()](ip)
+            return MINER_CLASSES[table_type][model_key](ip)
         except LookupError:
-            if miner_type in MINER_CLASSES:
+            if table_type in MINER_CLASSES:
                 if miner_model is not None:
                     warnings.warn(
-                        f"Partially supported miner found: {miner_model}, type: {miner_type}, please open an issue with miner data "
+                        f"Partially supported miner found: {miner_model}, type: {table_type}, please open an issue with miner data "
                         f"and this model on GitHub (https://github.com/UpstreamData/pyasic/issues)."
                     )
-                return MINER_CLASSES[miner_type][None](ip)
+                return MINER_CLASSES[table_type][None](ip)
             return UnknownMiner(str(ip))
 
     async def get_miner_model_hash_master(self, ip: str) -> str | None:
