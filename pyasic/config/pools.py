@@ -175,6 +175,16 @@ class Pool(MinerConfigValue):
         )
 
     @classmethod
+    def from_sdminer(cls, web_pool: dict) -> "Pool":
+        # sdminer accepts worker/user and password/pass as aliases, and fills an
+        # empty password with "x"
+        return cls(
+            url=web_pool["url"],
+            user=web_pool.get("user", web_pool.get("worker", "")),
+            password=web_pool.get("pass", web_pool.get("password")) or "x",
+        )
+
+    @classmethod
     def from_hiveon_modern(cls, web_pool: dict) -> "Pool":
         return cls(
             url=web_pool["url"], user=web_pool["user"], password=web_pool["pass"]
@@ -442,6 +452,17 @@ class PoolGroup(MinerConfigValue):
         return cls(pools=pools)
 
     @classmethod
+    def from_sdminer(cls, web_pool_list: list) -> "PoolGroup":
+        # a slot is disabled only by a literal false
+        return cls(
+            pools=[
+                Pool.from_sdminer(pool)
+                for pool in web_pool_list
+                if pool.get("enabled") is not False and pool.get("url")
+            ]
+        )
+
+    @classmethod
     def from_hiveon_modern(cls, web_pool_list: list) -> "PoolGroup":
         pools = []
         for pool in web_pool_list:
@@ -681,6 +702,15 @@ class PoolConfig(MinerConfigValue):
             return cls(groups=[])
 
         return cls(groups=[PoolGroup.from_am_modern(pool_data)])
+
+    @classmethod
+    def from_sdminer(cls, web_miner_config: dict) -> "PoolConfig":
+        try:
+            pool_data = web_miner_config["pools"]
+        except KeyError:
+            return cls(groups=[])
+
+        return cls(groups=[PoolGroup.from_sdminer(pool_data)])
 
     @classmethod
     def from_hiveon_modern(cls, web_conf: dict) -> "PoolConfig":

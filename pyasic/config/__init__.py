@@ -260,6 +260,17 @@ class MinerConfig(BaseModel):
         )
 
     @classmethod
+    def from_sdminer(
+        cls, web_miner_config: dict | None, work_mode: str | None
+    ) -> "MinerConfig":
+        """Constructs a MinerConfig object from the saved sdminer config and the
+        work mode in effect."""
+        return cls(
+            pools=PoolConfig.from_sdminer(web_miner_config or {}),
+            mining_mode=MiningModeConfig.from_sdminer(web_miner_config, work_mode),
+        )
+
+    @classmethod
     def from_hiveon_modern(cls, web_conf: dict) -> "MinerConfig":
         """Constructs a MinerConfig object from web configuration for Hiveon."""
         return cls(

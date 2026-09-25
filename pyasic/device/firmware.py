@@ -28,6 +28,7 @@ class MinerFirmware(str, Enum):
     LUXOS = "LuxOS"
     MARATHON = "MaraFW"
     BITFUFU_OS = "BitFuFuOS"
+    SDMINER = "GridFW"
 
     def __str__(self):
         return self.value

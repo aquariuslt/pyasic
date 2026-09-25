@@ -1,0 +1,8 @@
+{
+  "version": "v1.1.10",
+  "control_board": "A113D",
+  "miner_type": "S21XP",
+  "build_time": "2026-09-24 02:12:02",
+  "build_type": "Release",
+  "product": "GridFw"
+}

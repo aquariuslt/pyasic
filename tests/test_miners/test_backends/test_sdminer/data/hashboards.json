@@ -1,0 +1,115 @@
+{
+  "count": 3,
+  "expected_count": 3,
+  "frequency_average_mhz": 554.4444444444451,
+  "hashboards": [
+    {
+      "asic_count": 91,
+      "dropped_nonce_count": 0,
+      "emitted_nonce_count": 70,
+      "frequency_average_mhz": 554.4444444444451,
+      "hardware_errors": 0,
+      "hashrate": {
+        "average": 101338,
+        "ideal": 102927,
+        "realtime_30m": 90233,
+        "realtime_5s": 100275,
+        "unit": "GH/s"
+      },
+      "index": 0,
+      "pending_nonce_capacity": 64,
+      "pending_nonce_count": 0,
+      "pending_nonce_high_watermark": 1,
+      "present": true,
+      "running": true,
+      "temperatures": {
+        "board_average_c": 48,
+        "board_c": [
+          56,
+          53,
+          47,
+          36
+        ],
+        "chip_c": [
+          71,
+          68,
+          62,
+          51
+        ],
+        "chip_max_c": 71
+      }
+    },
+    {
+      "asic_count": 91,
+      "dropped_nonce_count": 0,
+      "emitted_nonce_count": 94,
+      "frequency_average_mhz": 554.4444444444451,
+      "hardware_errors": 0,
+      "hashrate": {
+        "average": 102319,
+        "ideal": 102927,
+        "realtime_30m": 90093,
+        "realtime_5s": 101705,
+        "unit": "GH/s"
+      },
+      "index": 1,
+      "pending_nonce_capacity": 64,
+      "pending_nonce_count": 0,
+      "pending_nonce_high_watermark": 1,
+      "present": true,
+      "running": true,
+      "temperatures": {
+        "board_average_c": 46,
+        "board_c": [
+          52,
+          50,
+          47,
+          37
+        ],
+        "chip_c": [
+          67,
+          65,
+          62,
+          52
+        ],
+        "chip_max_c": 67
+      }
+    },
+    {
+      "asic_count": 91,
+      "dropped_nonce_count": 0,
+      "emitted_nonce_count": 65,
+      "frequency_average_mhz": 554.4444444444451,
+      "hardware_errors": 0,
+      "hashrate": {
+        "average": 99561,
+        "ideal": 102927,
+        "realtime_30m": 89208,
+        "realtime_5s": 94338,
+        "unit": "GH/s"
+      },
+      "index": 2,
+      "pending_nonce_capacity": 64,
+      "pending_nonce_count": 0,
+      "pending_nonce_high_watermark": 2,
+      "present": true,
+      "running": true,
+      "temperatures": {
+        "board_average_c": 45,
+        "board_c": [
+          51,
+          49,
+          47,
+          36
+        ],
+        "chip_c": [
+          66,
+          64,
+          62,
+          51
+        ],
+        "chip_max_c": 66
+      }
+    }
+  ]
+}

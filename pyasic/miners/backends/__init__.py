@@ -34,6 +34,7 @@ from .luckyminer import LuckyMiner
 from .luxminer import LUXMiner
 from .marathon import MaraMiner
 from .mskminer import MSKMiner
+from .sdminer import SDMiner
 from .spideros import SpiderOSMiner
 from .unknown import UnknownMiner
 from .vnish import VNish

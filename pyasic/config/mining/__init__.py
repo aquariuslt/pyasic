@@ -781,6 +781,30 @@ class MiningModeConfig(MinerConfigOption):
         return cls.unknown()
 
     @classmethod
+    def from_sdminer(cls, web_miner_config: dict | None, work_mode: str | None):
+        """`work_mode` is the mode in effect, which sdminer reports apart from
+        the saved one (an unparsable saved mode runs as stock); the saved
+        config supplies the parameters of that mode."""
+        mode_conf = (web_miner_config or {}).get("mode") or {}
+        if work_mode is None:
+            work_mode = mode_conf.get("work_mode")
+        if work_mode == "stock":
+            return cls.normal()
+        if work_mode == "sleep":
+            return cls.sleep()
+        if work_mode == "tuning":
+            target = (mode_conf.get("tuning") or {}).get("target_hashrate_ths")
+            return cls.hashrate_tuning(hashrate=target)
+        if work_mode == "fixed":
+            fixed = mode_conf.get("fixed") or {}
+            if fixed.get("frequency_mhz") is None or fixed.get("voltage_v") is None:
+                return cls.unknown()
+            return cls.manual(
+                global_freq=fixed["frequency_mhz"], global_volt=fixed["voltage_v"]
+            )
+        return cls.unknown()
+
+    @classmethod
     def from_hiveon_modern(cls, web_conf: dict):
         if web_conf.get("bitmain-work-mode") is not None:
             work_mode = web_conf["bitmain-work-mode"]

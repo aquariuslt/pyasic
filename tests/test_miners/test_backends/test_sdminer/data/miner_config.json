@@ -1,0 +1,32 @@
+{
+  "general": {
+    "cooling_mode": "air"
+  },
+  "mode": {
+    "work_mode": "tuning",
+    "fixed": {
+      "frequency_mhz": 490,
+      "voltage_v": 14.3
+    },
+    "tuning": {
+      "target_hashrate_ths": 270
+    }
+  },
+  "pools": [
+    {
+      "url": "stratum+tcp://pool-a.example.com:3333",
+      "user": "account.worker1",
+      "pass": "x"
+    },
+    {
+      "url": "stratum+tcp://pool-a.example.com:443",
+      "user": "account.worker1",
+      "pass": "x"
+    },
+    {
+      "url": "stratum+tcp://pool-b.example.com:1314",
+      "user": "account.worker1",
+      "pass": "x"
+    }
+  ]
+}

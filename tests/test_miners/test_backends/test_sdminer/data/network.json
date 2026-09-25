@@ -1,0 +1,16 @@
+{
+  "nettype": "DHCP",
+  "netdevice": "Ethernet",
+  "macaddr": "02:00:00:00:00:01",
+  "ipaddress": "192.0.2.10",
+  "netmask": "255.255.254.0",
+  "gateway": "192.0.2.1",
+  "effective_dnsservers": "8.8.8.8 1.1.1.1",
+  "dns_source": "DHCP",
+  "conf_nettype": "DHCP",
+  "conf_hostname": "Antminer",
+  "conf_ipaddress": "",
+  "conf_netmask": "",
+  "conf_gateway": "",
+  "conf_dnsservers": ""
+}

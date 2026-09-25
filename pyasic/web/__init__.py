@@ -22,5 +22,6 @@ from .goldshell import GoldshellWebAPI
 from .hammer import HammerWebAPI
 from .iceriver import IceRiverWebAPI
 from .innosilicon import InnosiliconWebAPI
+from .sdminer import SDMinerWebAPI
 from .spideros import SpiderOSWebAPI
 from .vnish import VNishWebAPI

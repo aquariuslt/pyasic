@@ -56,3 +56,7 @@ class MaraFirmware(BaseMiner):
 
 class BitfufuFirmware(BaseMiner):
     firmware = MinerFirmware.BITFUFU_OS
+
+
+class SDMinerFirmware(BaseMiner):
+    firmware = MinerFirmware.SDMINER

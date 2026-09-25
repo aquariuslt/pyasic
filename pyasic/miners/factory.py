@@ -22,6 +22,7 @@ import json
 import re
 import typing
 import warnings
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from typing import Any, AsyncGenerator, Callable, Union
 
@@ -115,6 +116,10 @@ class SpiderOSUnknown(SpiderOSMiner, AntMinerMake):
     pass
 
 
+class SDMinerUnknown(SDMiner, AntMinerMake):
+    pass
+
+
 class MinerTypes(enum.Enum):
     ANTMINER = 0
     WHATSMINER = 1
@@ -138,6 +143,7 @@ class MinerTypes(enum.Enum):
     BITFUFU = 19
     HASHMASTER = 20
     SPIDER_OS = 21
+    SDMINER = 22
 
 
 class MinerIdentifyStatus(str, enum.Enum):
@@ -158,6 +164,20 @@ class MinerIdentifyResult:
     miner: AnyMiner | None
     status: MinerIdentifyStatus
     errors: dict[str, Exception] = field(default_factory=dict)
+
+
+# One type probe attempt: a type settled before an optional refining probe is
+# kept here, so a refining probe that outlasts the budget cannot lose it
+@dataclass
+class _TypeProbeState:
+    fallback: MinerTypes | None = None
+
+
+# the attempt in progress, reached through the context the probe tasks copy,
+# so the probe helpers keep their signatures
+_TYPE_PROBE_STATE: ContextVar[_TypeProbeState | None] = ContextVar(
+    "_type_probe_state", default=None
+)
 
 
 MINER_CLASSES = {
@@ -852,6 +872,10 @@ MINER_CLASSES = {
         "ANTMINER S21E HYD (SPOS)": SpiderOSS21EHydro,
         "ANTMINER S21E XP HYD (SPOS)": SpiderOSS21EXPHydro,
     },
+    MinerTypes.SDMINER: {
+        None: SDMinerUnknown,
+        "S21XP": SDMinerS21XP,
+    },
 }
 
 
@@ -962,10 +986,18 @@ class MinerFactory:
         type_probe_answered = False
 
         for _ in range(retries):
-            task = asyncio.create_task(self._get_miner_type(ip))
+            probe_state = _TypeProbeState()
+            token = _TYPE_PROBE_STATE.set(probe_state)
+            try:
+                task = asyncio.create_task(self._get_miner_type(ip))
+            finally:
+                _TYPE_PROBE_STATE.reset(token)
             try:
                 miner_type = await asyncio.wait_for(task, timeout=timeout)
             except asyncio.TimeoutError:
+                if probe_state.fallback is not None:
+                    miner_type = probe_state.fallback
+                    break
                 continue
             except Exception as e:  # noqa: BLE001
                 errors["type"] = e
@@ -1007,6 +1039,7 @@ class MinerFactory:
             MinerTypes.BITFUFU: self.get_miner_model_bitfufu,
             MinerTypes.HASHMASTER: self.get_miner_model_hash_master,
             MinerTypes.SPIDER_OS: self.get_miner_model_spider_os,
+            MinerTypes.SDMINER: self.get_miner_model_sdminer,
         }
         fn = miner_model_fns.get(miner_type)
 
@@ -1072,6 +1105,16 @@ class MinerFactory:
                         # could still be hashmaster
                         elif "HASHMASTER" in str(res).upper():
                             mtype = MinerTypes.HASHMASTER
+                    else:
+                        # sdminer keeps the stock realm but refuses the stock
+                        # cgi, so only its rpc tells it apart. The miner is an
+                        # Antminer whatever that probe finds, so the type
+                        # stands if the probe outlasts the budget
+                        probe_state = _TYPE_PROBE_STATE.get()
+                        if probe_state is not None:
+                            probe_state.fallback = MinerTypes.ANTMINER
+                        if await self._is_sdminer(ip):
+                            mtype = MinerTypes.SDMINER
                 if mtype == MinerTypes.HAMMER:
                     res = await self.get_miner_model_hammer(ip)
                     if res is None:
@@ -1222,6 +1265,8 @@ class MinerFactory:
             return MinerTypes.MSKMINER
         if "HASHMASTER" in upper_data:
             return MinerTypes.HASHMASTER
+        if "SDMINER" in upper_data:
+            return MinerTypes.SDMINER
         if "ANTMINER" in upper_data and "DEVDETAILS" not in upper_data:
             json_str = upper_data.replace("\x00", "")
             try:
@@ -1391,6 +1436,33 @@ class MinerFactory:
         ]
 
         return await concurrent_get_first_result(tasks, lambda x: x is not None)
+
+    async def _is_sdminer(self, ip: str) -> bool:
+        # refines an Antminer already settled: a probe that fails in any way
+        # cannot tell, and the Antminer type stands
+        try:
+            sock_json_data = await self.send_api_command(ip, "version")
+        except Exception:  # noqa: BLE001
+            return False
+        try:
+            return sock_json_data["VERSION"][0]["Type"] == "SDMiner"
+        except (TypeError, LookupError):
+            return False
+
+    async def get_miner_model_sdminer(self, ip: str) -> str | None:
+        auth = httpx.DigestAuth(
+            "root", settings.get("default_antminer_web_password", "root")
+        )
+        web_json_data = await self.send_web_command(ip, "/api/v1/system", auth=auth)
+        try:
+            return web_json_data["miner"]["model"] or None
+        except (TypeError, LookupError):
+            pass
+        web_json_data = await self.send_web_command(ip, "/system/v1/info", auth=auth)
+        try:
+            return web_json_data["miner_type"] or None
+        except (TypeError, LookupError):
+            pass
 
     async def get_miner_model_spider_os(self, ip: str) -> str | None:
         sock_json_data = await self.send_api_command(ip, "version")

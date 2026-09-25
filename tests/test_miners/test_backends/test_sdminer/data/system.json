@@ -1,0 +1,63 @@
+{
+  "control_board": {
+    "mac": "02:00:00:00:00:01",
+    "model": "A113D",
+    "serial": "00000000000000000000000000000001"
+  },
+  "firmware": {
+    "build_timestamp": 1790241172,
+    "commit": "ff179f8",
+    "version": "dev"
+  },
+  "hashboard_serials": [
+    {
+      "index": 0,
+      "serial": "BOARDSERIAL0000A"
+    },
+    {
+      "index": 1,
+      "serial": "BOARDSERIAL0000B"
+    },
+    {
+      "index": 2,
+      "serial": "BOARDSERIAL0000C"
+    }
+  ],
+  "limits": {
+    "freq_max": 600,
+    "freq_min": 300,
+    "hashrate_max": 330,
+    "hashrate_min": 180,
+    "voltage_max": 15.300000007199998,
+    "voltage_min": 11.700000005505881
+  },
+  "memory": {
+    "available_bytes": 167063552,
+    "buffers_bytes": 0,
+    "cached_bytes": 24907776,
+    "free_bytes": 159600640,
+    "total_bytes": 243843072
+  },
+  "miner": {
+    "identity_firmware": "sdminer/dev",
+    "model": "S21XP",
+    "serial": ""
+  },
+  "operating_system": {
+    "hostname": "Antminer",
+    "machine": "aarch64",
+    "name": "Linux",
+    "release": "4.9.113",
+    "uptime_seconds": 1218,
+    "version": "#2 SMP PREEMPT Thu May 9 10:04:47 CST 2024"
+  },
+  "power": {
+    "detected": true,
+    "model": "APW17 1215 Ver.A",
+    "protocol": 1,
+    "type": "APW",
+    "vendor": "Bitmain Technologies",
+    "voltage_v": 14.071764712504358,
+    "watts": 3654.0
+  }
+}

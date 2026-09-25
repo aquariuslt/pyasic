@@ -23,5 +23,6 @@ from .hiveon import *
 from .luxos import *
 from .marathon import *
 from .mskminer import *
+from .sdminer import *
 from .spideros import *
 from .vnish import *

@@ -1,0 +1,22 @@
+{
+  "STATUS": [
+    {
+      "STATUS": "S",
+      "When": 1790263062,
+      "Code": 22,
+      "Msg": "CGMiner versions",
+      "Description": "sdminer api 1.0"
+    }
+  ],
+  "id": 1,
+  "VERSION": [
+    {
+      "BMMiner": "sdminer",
+      "API": "3.7",
+      "Miner": "btc/sha256d",
+      "CompileTime": "Sep 24 2026 02:12:53",
+      "Type": "SDMiner",
+      "Model": "x86"
+    }
+  ]
+}
