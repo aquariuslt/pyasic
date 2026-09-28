@@ -1,0 +1,26 @@
+{
+  "STATUS": {
+    "STATUS": "S",
+    "when": 0,
+    "Msg": "summary",
+    "api_version": "1.0.0"
+  },
+  "INFO": {
+    "miner_version": "4.13.7",
+    "CompileTime": "test fixture",
+    "type": "Antminer S21+"
+  },
+  "SUMMARY": [
+    {
+      "elapsed": 120,
+      "rate_5s": 200000.0,
+      "rate_30m": null,
+      "rate_avg": 150000.0,
+      "rate_ideal": null,
+      "rate_unit": "GH/s",
+      "hw_all": 0,
+      "bestshare": 0,
+      "status": []
+    }
+  ]
+}

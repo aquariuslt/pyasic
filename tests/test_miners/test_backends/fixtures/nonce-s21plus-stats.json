@@ -1,0 +1,99 @@
+{
+  "STATUS": {
+    "STATUS": "S",
+    "when": 0,
+    "Msg": "stats",
+    "api_version": "1.0.0"
+  },
+  "INFO": {
+    "miner_version": "4.13.7",
+    "CompileTime": "test fixture",
+    "type": "Antminer S21+"
+  },
+  "STATS": [
+    {
+      "elapsed": 120,
+      "rate_5s": 200000.0,
+      "rate_30m": null,
+      "rate_avg": 150000.0,
+      "rate_ideal": null,
+      "rate_unit": "GH/s",
+      "chain_num": 3,
+      "fan_num": 4,
+      "chain": [
+        {
+          "index": 0,
+          "asic_num": 55,
+          "sn": null,
+          "eeprom_loaded": false,
+          "freq_avg": null,
+          "rate_real": null,
+          "rate_ideal": null,
+          "temp_chip": [],
+          "temp_pic": [],
+          "temp_pcb": [
+            30.0,
+            null,
+            40.0,
+            null
+          ],
+          "asic": null,
+          "hw": null,
+          "hwp": null,
+          "tpl": []
+        },
+        {
+          "index": 1,
+          "asic_num": 55,
+          "sn": null,
+          "eeprom_loaded": false,
+          "freq_avg": null,
+          "rate_real": null,
+          "rate_ideal": null,
+          "temp_chip": [],
+          "temp_pic": [],
+          "temp_pcb": [
+            31.0,
+            null,
+            41.0,
+            null
+          ],
+          "asic": null,
+          "hw": null,
+          "hwp": null,
+          "tpl": []
+        },
+        {
+          "index": 2,
+          "asic_num": 55,
+          "sn": null,
+          "eeprom_loaded": false,
+          "freq_avg": null,
+          "rate_real": null,
+          "rate_ideal": null,
+          "temp_chip": [],
+          "temp_pic": [],
+          "temp_pcb": [
+            32.0,
+            null,
+            42.0,
+            null
+          ],
+          "asic": null,
+          "hw": null,
+          "hwp": null,
+          "tpl": []
+        }
+      ],
+      "fan": [
+        0,
+        3000,
+        3000,
+        3000
+      ],
+      "hwp_total": null,
+      "miner-mode": null,
+      "freq-level": null
+    }
+  ]
+}

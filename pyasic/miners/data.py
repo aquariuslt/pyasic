@@ -31,6 +31,7 @@ class DataOptions(Enum):
     HASHBOARDS = "hashboards"
     TEMPERATURE_RAW = "temperature_raw"
     ENVIRONMENT_TEMP = "env_temp"
+    VOLTAGE = "voltage"
     WATTAGE = "wattage"
     WATTAGE_LIMIT = "wattage_limit"
     FANS = "fans"

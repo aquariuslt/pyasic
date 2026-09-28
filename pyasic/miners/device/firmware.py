@@ -60,3 +60,7 @@ class BitfufuFirmware(BaseMiner):
 
 class SDMinerFirmware(BaseMiner):
     firmware = MinerFirmware.SDMINER
+
+
+class NonceFirmware(BaseMiner):
+    firmware = MinerFirmware.NONCE

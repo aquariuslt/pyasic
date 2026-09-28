@@ -100,12 +100,16 @@ class PoolMetrics(BaseModel):
     @property
     def pool_rejected_percent(self) -> float:  # noqa - Skip PyCharm inspection
         """Calculate and return the percentage of rejected shares"""
+        if self.accepted is None or self.rejected is None:
+            return 0
         return self._calculate_percentage(self.rejected, self.accepted + self.rejected)
 
     @computed_field  # type: ignore[misc]
     @property
     def pool_stale_percent(self) -> float:  # noqa - Skip PyCharm inspection
         """Calculate and return the percentage of stale shares."""
+        if self.accepted is None or self.rejected is None:
+            return 0
         return self._calculate_percentage(
             self.get_failures, self.accepted + self.rejected
         )

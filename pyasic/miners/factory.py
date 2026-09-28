@@ -48,6 +48,7 @@ from pyasic.miners.auradine import *
 from pyasic.miners.avalonminer import *
 from pyasic.miners.backends import *
 from pyasic.miners.backends.bitfufu import BitfufuMiner
+from pyasic.miners.backends.nonce import Nonce
 from pyasic.miners.base import AnyMiner
 from pyasic.miners.bitaxe import *
 from pyasic.miners.blockminer import *
@@ -120,6 +121,10 @@ class SDMinerUnknown(SDMiner, AntMinerMake):
     pass
 
 
+class NonceUnknown(Nonce, AntMinerMake):
+    pass
+
+
 class MinerTypes(enum.Enum):
     ANTMINER = 0
     WHATSMINER = 1
@@ -144,6 +149,7 @@ class MinerTypes(enum.Enum):
     HASHMASTER = 20
     SPIDER_OS = 21
     SDMINER = 22
+    NONCE = 23
 
 
 class MinerIdentifyStatus(str, enum.Enum):
@@ -181,6 +187,10 @@ _TYPE_PROBE_STATE: ContextVar[_TypeProbeState | None] = ContextVar(
 
 
 MINER_CLASSES = {
+    MinerTypes.NONCE: {
+        None: NonceUnknown,
+        "ANTMINER S21+": NonceS21Plus,
+    },
     MinerTypes.ANTMINER: {
         None: AntminerUnknown,
         "ANTMINER D3": CGMinerD3,
@@ -1040,6 +1050,7 @@ class MinerFactory:
             MinerTypes.HASHMASTER: self.get_miner_model_hash_master,
             MinerTypes.SPIDER_OS: self.get_miner_model_spider_os,
             MinerTypes.SDMINER: self.get_miner_model_sdminer,
+            MinerTypes.NONCE: self.get_miner_model_nonce,
         }
         fn = miner_model_fns.get(miner_type)
 
@@ -1275,6 +1286,12 @@ class MinerFactory:
                 pass
             else:
                 try:
+                    version = json_data["VERSION"][0]
+                    if version.get("FIRMWARE") == "NONCE":
+                        return MinerTypes.NONCE
+                except (KeyError, TypeError, AttributeError, IndexError):
+                    pass
+                try:
                     if "SPOS" in json_data["VERSION"][0]["TYPE"]:
                         return MinerTypes.SPIDER_OS
                 except (KeyError, IndexError):
@@ -1470,6 +1487,15 @@ class MinerFactory:
             return sock_json_data["VERSION"][0]["Type"]
         except (TypeError, LookupError):
             pass
+
+    async def get_miner_model_nonce(self, ip: str) -> str | None:
+        response = await self.send_api_command(ip, "version")
+        try:
+            version = response["VERSION"][0]
+            if version.get("Firmware") == "Nonce":
+                return version.get("Model")
+        except (TypeError, LookupError):
+            return None
 
     async def _get_model_hash_master_web(self, ip: str) -> str | None:
         # last resort, this is slow

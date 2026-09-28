@@ -26,3 +26,5 @@ from .mskminer import *
 from .sdminer import *
 from .spideros import *
 from .vnish import *
+
+from .nonce import *

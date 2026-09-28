@@ -100,6 +100,7 @@ class MinersTest(unittest.TestCase):
                 "control_board",
                 "uptime",
                 "serial_number",
+                "voltage",
                 "wattage",
                 "wattage_limit",
                 "pools",

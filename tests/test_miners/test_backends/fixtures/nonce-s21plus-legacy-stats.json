@@ -1,0 +1,27 @@
+{
+  "STATUS": [
+    {
+      "STATUS": "S",
+      "Code": 70
+    }
+  ],
+  "STATS": [
+    {
+      "ID": "S21+0",
+      "PSU Identity Valid": true,
+      "PSU Serial": "KLKT347BEJBAJ3889",
+      "PSU Telemetry Valid": true,
+      "PSU Telemetry Error": 0,
+      "PSU Power Valid": true,
+      "PSU Power W": 3500.0,
+      "PSU Power Raw": 3500,
+      "PSU Power Measurement Side": "unconfirmed",
+      "PSU Voltage Valid": true,
+      "PSU Voltage V": 15.003,
+      "PSU Sample Age ms": 0,
+      "PSU Read Errors": 0,
+      "MAC": "02:11:22:33:44:55",
+      "MAC Error": 0
+    }
+  ]
+}
