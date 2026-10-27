@@ -4,7 +4,9 @@ from unittest.mock import AsyncMock
 
 import httpx
 
+from pyasic import settings
 from pyasic.errors import APITransportError
+from pyasic.web import antminer
 from pyasic.web.antminer import AntminerModernWebAPI
 
 
@@ -162,3 +164,76 @@ def test_antminer_send_command_forgets_a_failure_once_the_command_answers(
     asyncio.run(api.send_command("get_system_info"))
 
     assert api.transport_errors == {}
+
+
+class _RecordingAsyncClient(_StatusAsyncClient):
+    """Answers a log backup request and keeps the timeout it was given."""
+
+    text = '{"stats": "success", "msg": "log_backup.tar"}'
+    timeouts = []
+
+    async def post(self, *args, **kwargs):
+        self.timeouts.append(kwargs.get("timeout"))
+        return self
+
+
+def test_antminer_log_backup_waits_for_the_miner_to_pack_its_logs(monkeypatch):
+    api = AntminerModernWebAPI("10.10.101.10")
+    monkeypatch.setattr(httpx, "AsyncClient", _RecordingAsyncClient)
+    monkeypatch.setattr(_RecordingAsyncClient, "timeouts", [])
+
+    result = asyncio.run(api._create_log_backup(["log.1", "log.2"]))
+
+    assert result["success"] is True and result["msg"] == "log_backup.tar"
+    assert _RecordingAsyncClient.timeouts == [antminer.LOG_BACKUP_TIMEOUT_SECONDS]
+    assert antminer.LOG_BACKUP_TIMEOUT_SECONDS > settings.get("api_function_timeout")
+
+
+class _SlowBackupAsyncClient(_RaisingAsyncClient):
+    async def post(self, *args, **kwargs):
+        raise httpx.ReadTimeout(
+            "",
+            request=httpx.Request(
+                "POST", "http://10.10.101.10/cgi-bin/create_log_backup.cgi"
+            ),
+        )
+
+
+def test_antminer_log_backup_timeout_is_reported_not_raised(monkeypatch):
+    api = AntminerModernWebAPI("10.10.101.10")
+    monkeypatch.setattr(httpx, "AsyncClient", _SlowBackupAsyncClient)
+
+    result = asyncio.run(api._create_log_backup(["log.1"]))
+
+    assert result["success"] is False and "ReadTimeout" in result["message"]
+
+
+class _RecordingCurrentLogClient(_RecordingAsyncClient):
+    text = "2026-10-22 01:25:42 set_voltage_by_steps to 1452."
+
+
+def test_antminer_current_log_waits_beyond_the_per_command_timeout(monkeypatch):
+    api = AntminerModernWebAPI("10.10.101.10")
+    monkeypatch.setattr(httpx, "AsyncClient", _RecordingCurrentLogClient)
+    monkeypatch.setattr(_RecordingCurrentLogClient, "timeouts", [])
+
+    result = asyncio.run(api._download_current_logs())
+
+    assert result["success"] is True
+    assert _RecordingCurrentLogClient.timeouts == [antminer.CURRENT_LOG_TIMEOUT_SECONDS]
+    assert antminer.CURRENT_LOG_TIMEOUT_SECONDS > settings.get("api_function_timeout")
+
+
+def test_antminer_firmware_upload_waits_for_the_flash_to_finish(monkeypatch, tmp_path):
+    firmware = tmp_path / "firmware.bmu"
+    firmware.write_bytes(b"image")
+    api = AntminerModernWebAPI("10.10.101.10")
+    monkeypatch.setattr(httpx, "AsyncClient", _RecordingAsyncClient)
+    monkeypatch.setattr(_RecordingAsyncClient, "timeouts", [])
+
+    asyncio.run(api.update_firmware(firmware))
+
+    assert _RecordingAsyncClient.timeouts == [antminer.FIRMWARE_UPLOAD_TIMEOUT_SECONDS]
+    assert antminer.FIRMWARE_UPLOAD_TIMEOUT_SECONDS > settings.get(
+        "api_function_timeout"
+    )

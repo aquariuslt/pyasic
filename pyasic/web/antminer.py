@@ -37,6 +37,16 @@ from pyasic.web.base import (
     normalize_wattage_value,
 )
 
+# the miner packs up to seven days of logs on request, which on S21-class
+# firmware takes well over the per-command api timeout
+LOG_BACKUP_TIMEOUT_SECONDS = 60
+LOG_DOWNLOAD_TIMEOUT_SECONDS = 30
+CURRENT_LOG_TIMEOUT_SECONDS = 60
+# the firmware image is uploaded in one request, then flashed before the
+# miner answers
+FIRMWARE_UPLOAD_TIMEOUT_SECONDS = 120
+CONFIG_LOCK_UPLOAD_TIMEOUT_SECONDS = 30
+
 
 class AntminerModernWebAPI(BaseWebAPI):
     def __init__(self, ip: str) -> None:
@@ -70,7 +80,7 @@ class AntminerModernWebAPI(BaseWebAPI):
                 data = await client.post(
                     url,
                     auth=auth,
-                    timeout=settings.get("api_function_timeout", 120),
+                    timeout=FIRMWARE_UPLOAD_TIMEOUT_SECONDS,
                     files={
                         "firmware": (
                             file.name,
@@ -312,7 +322,7 @@ class AntminerModernWebAPI(BaseWebAPI):
                     url,
                     json=log_list,
                     auth=auth,
-                    timeout=settings.get("api_function_timeout", 3),
+                    timeout=LOG_BACKUP_TIMEOUT_SECONDS,
                 )
         except httpx.HTTPError as e:
             return {
@@ -344,7 +354,7 @@ class AntminerModernWebAPI(BaseWebAPI):
                 data = await client.get(
                     url,
                     auth=auth,
-                    timeout=30,  # downloading log file may take longer time
+                    timeout=LOG_DOWNLOAD_TIMEOUT_SECONDS,
                 )
         except httpx.HTTPError as e:
             return {
@@ -405,7 +415,7 @@ class AntminerModernWebAPI(BaseWebAPI):
                 data = await client.post(
                     url,
                     auth=auth,
-                    timeout=settings.get("api_function_timeout", 60),
+                    timeout=CURRENT_LOG_TIMEOUT_SECONDS,
                 )
         except httpx.HTTPError as e:
             return {
@@ -498,7 +508,7 @@ class AntminerModernWebAPI(BaseWebAPI):
                 data = await client.post(
                     url,
                     auth=auth,
-                    timeout=30,
+                    timeout=CONFIG_LOCK_UPLOAD_TIMEOUT_SECONDS,
                     files={
                         "firmware": file_content,
                     },
