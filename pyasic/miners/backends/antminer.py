@@ -409,9 +409,10 @@ class AntminerModern(BMMiner):
         if rpc_stats is not None:
             try:
                 for board in rpc_stats["STATS"][0]["chain"]:
-                    hashboards[board["index"]].hashrate = self.algo.hashrate(
-                        rate=board["rate_real"], unit=self.algo.unit.GH
-                    ).into(self.algo.unit.default)
+                    if board["rate_real"] is not None:
+                        hashboards[board["index"]].hashrate = self.algo.hashrate(
+                            rate=board["rate_real"], unit=self.algo.unit.GH
+                        ).into(self.algo.unit.default)
                     hashboards[board["index"]].chips = board["asic_num"]
 
                     apply_antminer_temperature_layout(
@@ -468,6 +469,8 @@ class AntminerModern(BMMiner):
         if rpc_stats is not None:
             try:
                 expected_rate = rpc_stats["STATS"][1]["total_rateideal"]
+                if expected_rate is None:
+                    return None
                 try:
                     rate_unit = rpc_stats["STATS"][1]["rate_unit"]
                 except KeyError:

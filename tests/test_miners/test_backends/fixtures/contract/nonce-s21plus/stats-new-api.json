@@ -1,0 +1,99 @@
+{
+  "STATUS": {
+    "STATUS": "S",
+    "when": 1793200265,
+    "Msg": "stats",
+    "api_version": "1.0.0"
+  },
+  "INFO": {
+    "miner_version": "4.13.8+g4cc16133ef77.dirty",
+    "CompileTime": "Oct 28 2026 13:39:48",
+    "type": "Antminer S21+"
+  },
+  "STATS": [
+    {
+      "chain_num": 3,
+      "fan_num": 4,
+      "chain": [
+        {
+          "index": 0,
+          "asic_num": 55,
+          "eeprom_loaded": true,
+          "sn": "FIXTUREBOARD00000",
+          "freq_avg": 704.166,
+          "temp_pcb": [
+            31.0,
+            null,
+            44.8125,
+            null
+          ],
+          "temp_chip": [],
+          "temp_pic": [],
+          "asic": null,
+          "hw": null,
+          "hwp": null,
+          "tpl": [],
+          "rate_real": null,
+          "rate_ideal": null
+        },
+        {
+          "index": 1,
+          "asic_num": 55,
+          "eeprom_loaded": true,
+          "sn": "FIXTUREBOARD00001",
+          "freq_avg": 704.166,
+          "temp_pcb": [
+            30.625,
+            null,
+            42.3125,
+            null
+          ],
+          "temp_chip": [],
+          "temp_pic": [],
+          "asic": null,
+          "hw": null,
+          "hwp": null,
+          "tpl": [],
+          "rate_real": null,
+          "rate_ideal": null
+        },
+        {
+          "index": 2,
+          "asic_num": 55,
+          "eeprom_loaded": true,
+          "sn": "FIXTUREBOARD00002",
+          "freq_avg": 704.166,
+          "temp_pcb": [
+            30.375,
+            null,
+            43.125,
+            null
+          ],
+          "temp_chip": [],
+          "temp_pic": [],
+          "asic": null,
+          "hw": null,
+          "hwp": null,
+          "tpl": [],
+          "rate_real": null,
+          "rate_ideal": null
+        }
+      ],
+      "fan": [
+        6450,
+        6480,
+        6180,
+        6150
+      ],
+      "elapsed": 1197,
+      "rate_5s": 208277.13936905345,
+      "rate_avg": 195332.2263991362,
+      "rate_30m": null,
+      "rate_ideal": null,
+      "rate_unit": "GH/s",
+      "hwp_total": 0.0,
+      "miner-mode": null,
+      "freq-level": null
+    }
+  ]
+}

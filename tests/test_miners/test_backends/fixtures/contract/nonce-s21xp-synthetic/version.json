@@ -1,0 +1,21 @@
+{
+  "STATUS": [
+    {
+      "STATUS": "S",
+      "When": 0,
+      "Code": 22,
+      "Msg": "CGMiner versions",
+      "Description": "cgminer 4.14.0"
+    }
+  ],
+  "VERSION": [
+    {
+      "CGMiner": "4.14.0",
+      "API": "3.7",
+      "Firmware": "Nonce",
+      "Model": "Antminer S21 XP",
+      "Nonce API": 2
+    }
+  ],
+  "id": 1
+}

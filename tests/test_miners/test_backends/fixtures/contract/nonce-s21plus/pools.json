@@ -1,0 +1,52 @@
+{
+  "STATUS": [
+    {
+      "STATUS": "S",
+      "When": 1793200265,
+      "Code": 7,
+      "Msg": "1 Pool(s)",
+      "Description": "cgminer 4.13.8+g4cc16133ef77.dirty"
+    }
+  ],
+  "POOLS": [
+    {
+      "POOL": 0,
+      "URL": "stratum+tcp://pool.example.com:3333",
+      "Status": "Alive",
+      "Priority": 0,
+      "Quota": 1,
+      "Long Poll": "N",
+      "Getworks": 44,
+      "Accepted": 62,
+      "Rejected": 0,
+      "Works": 3597,
+      "Discarded": 3000,
+      "Stale": 0,
+      "Get Failures": 0,
+      "Remote Failures": 0,
+      "User": "fixture.worker",
+      "Last Share Time": 1793200258,
+      "Diff1 Shares": 54449408,
+      "Proxy Type": "",
+      "Proxy": "",
+      "Difficulty Accepted": 47710208.0,
+      "Difficulty Rejected": 0.0,
+      "Difficulty Stale": 0.0,
+      "Last Share Difficulty": 1048576.0,
+      "Work Difficulty": 1048576.0,
+      "Has Stratum": true,
+      "Stratum Active": true,
+      "Stratum URL": "pool.example.com",
+      "Stratum Difficulty": 1048576.0,
+      "Has Vmask": true,
+      "Has GBT": false,
+      "Best Share": 100960236,
+      "Pool Rejected%": 0.0,
+      "Pool Stale%": 0.0,
+      "Bad Work": 0,
+      "Current Block Height": 973570,
+      "Current Block Version": 536870912
+    }
+  ],
+  "id": 1
+}

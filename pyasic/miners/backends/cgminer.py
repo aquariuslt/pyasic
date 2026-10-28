@@ -33,9 +33,18 @@ def parse_cgminer_pools(rpc_pools: dict | None) -> List[PoolMetrics]:
             for pool_info in pools:
                 url = pool_info.get("URL")
                 pool_url = PoolUrl.from_str(url) if url else None
+                last_share = pool_info.get("Last Share Time")
                 pool_data = PoolMetrics(
                     accepted=pool_info.get("Accepted"),
                     rejected=pool_info.get("Rejected"),
+                    difficulty_accepted=pool_info.get("Difficulty Accepted"),
+                    difficulty_rejected=pool_info.get("Difficulty Rejected"),
+                    difficulty_stale=pool_info.get("Difficulty Stale"),
+                    last_share_ts=(
+                        last_share
+                        if type(last_share) is int and last_share >= 0
+                        else None
+                    ),
                     get_failures=pool_info.get("Get Failures"),
                     remote_failures=pool_info.get("Remote Failures"),
                     active=pool_info.get("Stratum Active"),

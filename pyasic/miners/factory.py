@@ -190,6 +190,7 @@ MINER_CLASSES = {
     MinerTypes.NONCE: {
         None: NonceUnknown,
         "ANTMINER S21+": NonceS21Plus,
+        "ANTMINER S21 XP": NonceS21XP,
     },
     MinerTypes.ANTMINER: {
         None: AntminerUnknown,

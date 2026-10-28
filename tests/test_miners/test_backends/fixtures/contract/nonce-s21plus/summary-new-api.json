@@ -1,0 +1,26 @@
+{
+  "STATUS": {
+    "STATUS": "S",
+    "when": 1793200265,
+    "Msg": "summary",
+    "api_version": "1.0.0"
+  },
+  "INFO": {
+    "miner_version": "4.13.8+g4cc16133ef77.dirty",
+    "CompileTime": "Oct 28 2026 13:39:48",
+    "type": "Antminer S21+"
+  },
+  "SUMMARY": [
+    {
+      "elapsed": 1197,
+      "rate_5s": 208277.13936905345,
+      "rate_avg": 195332.2263991362,
+      "rate_30m": null,
+      "rate_ideal": null,
+      "rate_unit": "GH/s",
+      "hw_all": 0,
+      "bestshare": 100960236,
+      "status": []
+    }
+  ]
+}
