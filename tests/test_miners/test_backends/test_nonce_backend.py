@@ -91,6 +91,33 @@ def read(response=None):
     return miner, asyncio.run(miner.get_data_with_errors())
 
 
+@pytest.mark.parametrize(
+    "reported, expected",
+    [
+        (0, "normal"),
+        (None, "unknown"),
+        (1, "unknown"),
+        ("0", "unknown"),
+        (False, "unknown"),
+    ],
+)
+def test_mining_mode_reads_reported_miner_mode(reported, expected):
+    payload = responses()
+    payload["stats"][0]["STATS"][0]["miner-mode"] = reported
+    miner, result = read(payload)
+    assert "config" not in result.field_parse_errors
+    assert result.data.config.mining_mode.mode == expected
+    assert miner.rpc.multicommand.await_count == 1
+
+
+def test_mining_mode_is_unset_when_stats_unavailable():
+    payload = responses()
+    del payload["stats"]
+    _, result = read(payload)
+    assert "config" in result.field_parse_errors
+    assert result.data.config is None
+
+
 def test_nonce_returns_unextended_standard_data():
     _, result = read()
     assert type(result.data) is MinerData

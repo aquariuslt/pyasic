@@ -7,6 +7,8 @@ from decimal import Decimal, ROUND_HALF_UP
 import httpx
 
 from pyasic import settings
+from pyasic.config import MinerConfig
+from pyasic.config.mining import MiningModeConfig
 from pyasic.errors import APIError
 from pyasic.data.boards import HashBoard
 from pyasic.data.fans import Fan
@@ -24,6 +26,9 @@ from pyasic.rpc.nonce import NonceRPCAPI
 WEBUI_PORT = 8080
 LOG_LINES = 500
 LOG_TIMEOUT_SECONDS = 30
+# `miner-mode` uses the stock Antminer work-mode codes; the firmware reports
+# only normal, and any other value is unknown.
+MINER_MODE_NORMAL = 0
 
 
 def _location(method: str, *commands: str) -> DataFunction:
@@ -47,7 +52,7 @@ NONCE_DATA_LOC = DataLocations(
     psus=_location("_get_psus", "legacy_stats"),
     voltage=_location("_get_voltage", "legacy_stats"),
     wattage=_location("_get_wattage", "legacy_stats"),
-    config=DataFunction("_get_monitoring_config"),
+    config=_location("_get_monitoring_config", "stats"),
 )
 
 
@@ -207,8 +212,18 @@ class Nonce(NonceFirmware):
             raise ValueError("invalid Nonce uptime")
         return int(elapsed)
 
-    async def _get_monitoring_config(self) -> None:
-        return None
+    async def _get_monitoring_config(
+        self, rpc_stats: dict | None = None
+    ) -> MinerConfig:
+        if rpc_stats is None:
+            try:
+                rpc_stats = await self.rpc.stats()
+            except APIError:
+                pass
+        mode = self._stats(rpc_stats).get("miner-mode")
+        if type(mode) is int and mode == MINER_MODE_NORMAL:
+            return MinerConfig(mining_mode=MiningModeConfig.normal())
+        return MinerConfig(mining_mode=MiningModeConfig.unknown())
 
     async def _get_pools(self, rpc_pools: dict | None = None) -> list[PoolMetrics]:
         if rpc_pools is None:

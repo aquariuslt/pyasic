@@ -5072,7 +5072,7 @@
       "rate_30m": null,
       "rate_unit": "GH/s",
       "hwp_total": 0.01,
-      "miner-mode": null,
+      "miner-mode": 0,
       "freq-level": null
     }
   ]

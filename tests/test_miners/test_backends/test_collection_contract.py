@@ -129,6 +129,7 @@ def test_recorded_nonce_s21plus_core_fields():
     assert data.wattage == 3534
     assert [fan.speed for fan in data.fans] == [6450, 6480, 6180, 6150]
     assert data.uptime == 1197 and data.is_mining is True
+    assert data.config.mining_mode.mode == "unknown"
     boards = data.hashboards
     assert [board.chips for board in boards] == [55, 55, 55]
     assert [board.hashrate for board in boards] == [None, None, None]
@@ -154,6 +155,7 @@ def test_synthetic_nonce_s21xp_core_fields():
     assert data.mac == "02:11:22:33:44:66"
     assert data.wattage == 3650
     assert ths(data.hashrate) == 200.0
+    assert data.config.mining_mode.mode == "normal"
     assert [fan.speed for fan in data.fans] == [6000, 6010, 6020, 6030]
     chains = load("nonce-s21xp-synthetic", "stats-new-api")["STATS"][0]["chain"]
     boards = data.hashboards
