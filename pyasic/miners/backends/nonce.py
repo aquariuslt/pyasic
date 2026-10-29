@@ -4,6 +4,9 @@ import math
 import re
 from decimal import Decimal, ROUND_HALF_UP
 
+import httpx
+
+from pyasic import settings
 from pyasic.errors import APIError
 from pyasic.data.boards import HashBoard
 from pyasic.data.fans import Fan
@@ -16,6 +19,11 @@ from pyasic.miners.base import MinerDataReadResult
 from pyasic.miners.data import DataFunction, DataLocations, DataOptions, RPCAPICommand
 from pyasic.miners.device.firmware import NonceFirmware
 from pyasic.rpc.nonce import NonceRPCAPI
+
+# The Nonce web service tails the runtime log of the current boot only.
+WEBUI_PORT = 8080
+LOG_LINES = 500
+LOG_TIMEOUT_SECONDS = 30
 
 
 def _location(method: str, *commands: str) -> DataFunction:
@@ -366,6 +374,45 @@ class Nonce(NonceFirmware):
 
     async def _is_mining(self, rpc_summary: dict | None = None) -> bool:
         return float(await self._get_hashrate(rpc_summary)) > 0
+
+    async def download_logs(self, category: str = "history") -> dict:
+        if category != "current":
+            return {
+                "success": False,
+                "message": "Nonce firmware only provides the current runtime log",
+            }
+        try:
+            async with httpx.AsyncClient(transport=settings.transport()) as client:
+                response = await client.get(
+                    f"http://{self.ip}:{WEBUI_PORT}/api/logs",
+                    params={"lines": LOG_LINES},
+                    timeout=LOG_TIMEOUT_SECONDS,
+                )
+            body = response.json()
+        except (httpx.HTTPError, ValueError) as e:
+            return {"success": False, "message": f"failed to read runtime log: {e}"}
+        if not isinstance(body, dict):
+            body = {}
+        lines = body.get("lines")
+        if (
+            response.status_code != 200
+            or body.get("ok") is not True
+            or not isinstance(lines, list)
+            or not all(isinstance(line, str) for line in lines)
+        ):
+            return {
+                "success": False,
+                "message": f"runtime log unavailable: HTTP {response.status_code}",
+            }
+        return {
+            "success": True,
+            "message": "successfully retrieved current log",
+            "data": {
+                "content": "".join(f"{line}\n" for line in lines),
+                "ext": "log",
+                "log_type": "flat",
+            },
+        }
 
     async def get_data_with_errors(
         self,

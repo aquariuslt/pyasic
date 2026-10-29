@@ -3,8 +3,10 @@ import json
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
+import httpx
 import pytest
 
+from pyasic import settings
 from pyasic.data import MinerData
 from pyasic.data.boards import HashBoard
 from pyasic.errors import APIError, APITransportError
@@ -807,3 +809,55 @@ def test_unknown_model_uses_actual_valid_fan_list(fans, speeds):
     result = asyncio.run(miner.get_data_with_errors(include=["fans"]))
     assert [fan.speed for fan in result.data.fans] == speeds
     assert result.field_parse_errors == {}
+
+
+def _serve_logs(monkeypatch, handle_request):
+    monkeypatch.setattr(
+        settings,
+        "transport",
+        lambda *args, **kwargs: httpx.MockTransport(handle_request),
+    )
+
+
+def test_download_current_log_reads_webui_runtime_log(monkeypatch):
+    requests = []
+
+    def handle(request):
+        requests.append(request)
+        return httpx.Response(200, json={"ok": True, "lines": ["a", "b"]})
+
+    _serve_logs(monkeypatch, handle)
+    result = asyncio.run(NonceS21Plus("192.0.2.1").download_logs("current"))
+    assert result["success"] is True
+    assert result["data"] == {"content": "a\nb\n", "ext": "log", "log_type": "flat"}
+    assert str(requests[0].url) == "http://192.0.2.1:8080/api/logs?lines=500"
+
+
+def test_download_history_log_is_rejected_without_request(monkeypatch):
+    _serve_logs(monkeypatch, lambda request: pytest.fail("unexpected request"))
+    result = asyncio.run(NonceS21Plus("192.0.2.1").download_logs("history"))
+    assert result["success"] is False
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        httpx.Response(404, json={"ok": False, "error": "log_unavailable"}),
+        httpx.Response(200, json={"ok": True, "lines": [1]}),
+        httpx.Response(200, json=["a"]),
+        httpx.Response(200, text="not json"),
+    ],
+)
+def test_download_current_log_reports_unusable_response(monkeypatch, response):
+    _serve_logs(monkeypatch, lambda request: response)
+    result = asyncio.run(NonceS21Plus("192.0.2.1").download_logs("current"))
+    assert result["success"] is False and "data" not in result
+
+
+def test_download_current_log_reports_transport_error(monkeypatch):
+    def handle(request):
+        raise httpx.ConnectError("refused", request=request)
+
+    _serve_logs(monkeypatch, handle)
+    result = asyncio.run(NonceS21Plus("192.0.2.1").download_logs("current"))
+    assert result["success"] is False
