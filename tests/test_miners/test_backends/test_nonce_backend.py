@@ -118,7 +118,7 @@ def test_native_snapshot_maps_to_serialized_data_without_http():
     assert (board.inlet_temp, board.outlet_temp, board.temp, board.chip_temp) == (
         30,
         40,
-        None,
+        35,
         None,
     )
     assert data.temperature_raw[0]["temp_pcb"] == [30, None, 40, None]
@@ -140,7 +140,7 @@ def test_partial_arrays_keep_slots_and_valid_zero():
     _, result = read(response)
     assert [board.outlet_temp for board in result.data.hashboards] == [55, None, None]
     assert result.data.hashboards[2].inlet_temp == 0
-    assert all(board.temp is None for board in result.data.hashboards)
+    assert [board.temp for board in result.data.hashboards] == [55, None, 0]
     assert result.data.fans[0].speed == 0 and result.data.fans[2].speed is None
     assert result.data.temperature_raw[0]["temp_pcb"] == [None, None, 55, None]
 

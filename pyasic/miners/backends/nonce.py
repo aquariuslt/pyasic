@@ -293,7 +293,7 @@ class Nonce(NonceFirmware):
         stats = self._stats(rpc_stats)
         boards = []
         for slot, chain in self._chains(stats):
-            pcb = [self._reading(chain, "temp_pcb", index) for index in (1, 3)]
+            pcb = [self._reading(chain, "temp_pcb", index) for index in range(4)]
             available = [value for value in pcb if value is not None]
             frequency = self._number(chain.get("freq_avg"))
             hashrate = self._number(chain.get("rate_real"))
