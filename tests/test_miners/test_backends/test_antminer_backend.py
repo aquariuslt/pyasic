@@ -1,6 +1,8 @@
 import asyncio
 from unittest.mock import AsyncMock
 
+import pytest
+
 from pyasic.miners.antminer.bmminer.X19 import (
     BMMinerS19XP,
     BMMinerS19XPPlusHydro,
@@ -10,6 +12,35 @@ from pyasic.miners.antminer.bmminer.X21 import (
     BMMinerS21PlusHydro,
     BMMinerS21XPHydro,
 )
+from pyasic.miners.antminer.bmminer.X21.S21 import BMMinerS21Plus, BMMinerS21XP
+
+
+@pytest.mark.parametrize("miner_class", [BMMinerS21Plus, BMMinerS21XP])
+@pytest.mark.parametrize("rate", [None, 0, 100000])
+def test_antminer_unknown_board_rate_preserves_other_fields(miner_class, rate):
+    miner = miner_class("192.0.2.1")
+    miner.rpc.stats = AsyncMock(
+        return_value=_rpc_stats_for_board(
+            {"rate_real": rate, "asic_num": 55, "temp_pcb": [30, None, 40, None]}
+        )
+    )
+    board = asyncio.run(miner._get_hashboards())[0]
+    assert (float(board.hashrate) if board.hashrate is not None else None) == (
+        rate / 1000 if rate is not None else None
+    )
+    assert board.chips == 55 and board.missing is False
+    assert board.serial_number == "HB-STOCK-001"
+    assert board.chip_frequency == 700
+
+
+@pytest.mark.parametrize("miner_class", [BMMinerS21Plus, BMMinerS21XP])
+def test_antminer_pool_accepts_cgminer_epoch(miner_class):
+    miner = miner_class("192.0.2.1")
+    pools = asyncio.run(
+        miner._get_pools({"POOLS": [{"Last Share Time": 1793194039, "Accepted": 22}]})
+    )
+    assert pools[0].last_share_ts == 1793194039
+    assert pools[0].accepted == 22
 
 
 def _rpc_stats_for_board(board):

@@ -1,0 +1,21 @@
+{
+  "STATUS": [
+    {
+      "STATUS": "S",
+      "When": 1792771441,
+      "Code": 22,
+      "Msg": "CGMiner versions",
+      "Description": "cgminer 1.0.0"
+    }
+  ],
+  "VERSION": [
+    {
+      "BMMiner": "1.0.0",
+      "API": "3.1",
+      "Miner": "uart_trans.1.3",
+      "CompileTime": "Thu Aug 13 07:34:29 CST 2026",
+      "Type": "Antminer S21 XP"
+    }
+  ],
+  "id": 1
+}

@@ -15,7 +15,13 @@ from pyasic.miners.backends.utils import (
     TemperatureSource,
     apply_antminer_temperature_layout,
     get_antminer_temperature_layout,
+    parse_last_share_to_timestamp,
 )
+
+
+@pytest.mark.parametrize("timestamp", [0, 1793194039])
+def test_last_share_preserves_cgminer_epoch(timestamp):
+    assert parse_last_share_to_timestamp(timestamp) == timestamp
 
 
 @pytest.mark.parametrize(

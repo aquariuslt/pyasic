@@ -20,7 +20,7 @@ _INVALID_SERIAL_NUMBER_VALUES = {
 }
 
 
-def parse_last_share_to_timestamp(last_share_time: str) -> int:
+def parse_last_share_to_timestamp(last_share_time: str | int) -> int:
     """
     Parse the last share time (elapsed since last share) to a unix timestamp.
     :params last_share_time: elapsed time in ``HH:MM:SS`` since the last share,
@@ -28,6 +28,8 @@ def parse_last_share_to_timestamp(last_share_time: str) -> int:
         Hours may exceed 24 (e.g. ``"68:40:44"``).
         ``"0"``, an empty string or ``None`` means no shares have been submitted.
     """
+    if type(last_share_time) is int:
+        return max(0, last_share_time)
     if not last_share_time or last_share_time == "0":
         return 0
     try:

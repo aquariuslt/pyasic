@@ -296,6 +296,7 @@ class Nonce(NonceFirmware):
             pcb = [self._reading(chain, "temp_pcb", index) for index in (1, 3)]
             available = [value for value in pcb if value is not None]
             frequency = self._number(chain.get("freq_avg"))
+            hashrate = self._number(chain.get("rate_real"))
             serial_number = (
                 normalize_antminer_like_serial_number(chain.get("sn"))
                 if chain.get("eeprom_loaded") is True
@@ -307,6 +308,15 @@ class Nonce(NonceFirmware):
                     missing=chain.get("asic_num") is None and serial_number is None,
                     expected_chips=self.expected_chips,
                     chips=chain.get("asic_num"),
+                    hashrate=(
+                        self.algo.hashrate(rate=hashrate, unit=self.algo.unit.GH).into(
+                            self.algo.unit.default
+                        )
+                        if hashrate is not None
+                        and hashrate >= 0
+                        and stats.get("rate_unit") == "GH/s"
+                        else None
+                    ),
                     serial_number=serial_number,
                     chip_frequency=(
                         frequency if frequency is not None and frequency >= 0 else None

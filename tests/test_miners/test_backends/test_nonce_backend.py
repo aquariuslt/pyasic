@@ -8,10 +8,32 @@ import pytest
 from pyasic.data import MinerData
 from pyasic.data.boards import HashBoard
 from pyasic.errors import APIError, APITransportError
-from pyasic.miners.antminer.nonce import NonceS21Plus
+from pyasic.miners.antminer.nonce import NonceS21Plus, NonceS21XP
 from pyasic.rpc.base import BaseMinerRPCAPI
 
 FIXTURE = Path(__file__).parent / "fixtures" / "nonce-s21plus-stats.json"
+
+
+@pytest.mark.parametrize("miner_class", [NonceS21Plus, NonceS21XP])
+@pytest.mark.parametrize("rate", [None, -1, True, float("nan"), 0, 100000])
+def test_nonce_maps_valid_board_rate_without_replacing_unknown(miner_class, rate):
+    miner = miner_class("192.0.2.1")
+    stats = json.loads(FIXTURE.read_text())
+    stats["STATS"][0]["chain"][0]["rate_real"] = rate
+    boards = asyncio.run(miner._get_hashboards(stats))
+    expected = rate / 1000 if type(rate) in (int, float) and rate >= 0 else None
+    assert (
+        float(boards[0].hashrate) if boards[0].hashrate is not None else None
+    ) == expected
+    assert boards[0].inlet_temp == 30 and boards[0].outlet_temp == 40
+
+
+def test_nonce_board_rate_requires_reported_unit():
+    miner = NonceS21Plus("192.0.2.1")
+    stats = json.loads(FIXTURE.read_text())
+    stats["STATS"][0]["chain"][0]["rate_real"] = 100000
+    stats["STATS"][0]["rate_unit"] = "TH/s"
+    assert asyncio.run(miner._get_hashboards(stats))[0].hashrate is None
 
 
 def responses():
